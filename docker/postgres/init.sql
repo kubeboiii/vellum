@@ -1,0 +1,12 @@
+-- Phase 1 init: enable the TimescaleDB extension on the ims database.
+--
+-- This script runs exactly once, the first time the postgres container
+-- boots against an empty data volume (the docker-entrypoint-initdb.d
+-- convention). Subsequent restarts skip it. To re-run, wipe the volume:
+--   docker compose -f docker/compose.yaml down -v
+--
+-- Why here and not in a golang-migrate file: CREATE EXTENSION needs
+-- superuser, and we don't want the application user to have superuser
+-- in production. Doing it in the init script keeps app-level migrations
+-- (backend/migrations/) runnable with a least-privileged role.
+CREATE EXTENSION IF NOT EXISTS timescaledb;

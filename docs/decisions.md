@@ -140,6 +140,53 @@
 
 ---
 
+## 2026-05-11 — Phase 1: pinned image tags `timescale/timescaledb:2.17.2-pg16`, `mongo:7.0.14`, `redis:7.4.1-alpine`
+
+**Context:** R5 (00-master-prd §10.1) requires reproducible bring-up on a reviewer's machine. Floating tags (`postgres:16`, `latest`) break that.
+
+**Decision:** Pin every image in `docker/compose.yaml` to a specific minor (and where available, patch) version: `timescale/timescaledb:2.17.2-pg16` for Postgres+Timescale, `mongo:7.0.14`, `redis:7.4.1-alpine`.
+
+**Why:** A reviewer cloning the repo six months from now gets bit-identical behaviour, not whatever the registry has redirected `:7` to. Postgres 16 line matches CLAUDE.md; Mongo 7 and Redis 7 match the stack table. Versions chosen are the latest patches available at scaffold time.
+
+**Alternatives considered:**
+- Floating major tags (`postgres:16`, `redis:7`) — common, but breaks reproducibility on a reviewer's machine months later.
+- Digest pinning (`@sha256:...`) — bulletproof but ugly and a pain to update; overkill for a 7-day demo.
+
+**Impact:** Anyone bumping versions must do it deliberately and log the upgrade here. Future Phase 7 dry-run on a fresh clone will confirm reproducibility.
+
+---
+
+## 2026-05-11 — Phase 1: TimescaleDB co-located in the Postgres container, not a separate service
+
+**Context:** CLAUDE.md and the user prompt phrase "all 4 databases healthy." Architecturally that's misleading — TimescaleDB is a Postgres *extension*, not a separate engine.
+
+**Decision:** One container (`timescale/timescaledb:2.17.2-pg16`) serves both Postgres and TimescaleDB. The extension is enabled by `docker/postgres/init.sql` on first boot. Backend code will use one pgx pool for both transactional tables and hypertables.
+
+**Why:** This is the entire reason 01-architecture §3.2 picked Timescale-the-extension over Prometheus — "one less container and one less driver." Splitting into two containers would contradict the documented rationale and add an unnecessary moving part.
+
+**Alternatives considered:**
+- Run a second `postgres:16` container labelled "timescale" — would technically give "4 databases" in `docker compose ps` but is architecturally wrong and operationally wasteful.
+
+**Impact:** `docker compose ps` shows 3 services, not 4. The README explicitly calls this out. Healthcheck on the single Postgres container covers both logical stores.
+
+---
+
+## 2026-05-11 — Phase 1: pnpm via corepack, with workspace-level `allowBuilds`
+
+**Context:** CLAUDE.md prescribes `pnpm dev` but pnpm wasn't installed; pnpm 11 also blocks any dep that has post-install scripts unless explicitly allowed.
+
+**Decision:** Enable pnpm via `corepack enable && corepack prepare pnpm@latest --activate`. Allowlist `unrs-resolver` (a transitive native-binding dep of `eslint-config-next`) in `frontend/pnpm-workspace.yaml`'s `allowBuilds` section.
+
+**Why:** corepack ships with Node 20+, so no separate install. pnpm 11's allowlist is a security feature (defense against post-install supply-chain attacks); `unrs-resolver` is a well-known, widely-used native binding for ESLint's resolver, safe to allow.
+
+**Alternatives considered:**
+- Switch the project to npm — would diverge from CLAUDE.md and lose pnpm's lockfile determinism.
+- Manually run `pnpm approve-builds` per-machine — not reproducible; would block CI.
+
+**Impact:** Fresh clones must run `corepack enable` once. README documents this in the prereq line.
+
+---
+
 <!--
 TEMPLATE for new entries — copy and fill in:
 

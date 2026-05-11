@@ -1,0 +1,94 @@
+# IMS local stack — Phase 1.
+#
+# This file brings up the four data stores the backend depends on
+# (Postgres+TimescaleDB, MongoDB, Redis) plus a placeholder network. Image
+# tags are pinned (R5 in 00-master-prd §10.1) so a reviewer running on a
+# fresh clone gets the same versions we developed against.
+#
+# Bring-up:   docker compose -f docker/compose.yaml up
+# Tear-down:  docker compose -f docker/compose.yaml down -v
+#
+# Acceptance for Phase 1: all four services report `healthy` via their
+# healthcheck. `docker compose ps` should show all green within ~30s on a
+# warm host (well under the NFR-1 / G6 90s budget in 00-master-prd §7).
+
+name: ims
+
+services:
+  postgres:
+    # TimescaleDB ships as a Postgres image with the extension preloaded
+    # (01-architecture §3.2: "one less container and one less driver than
+    # running Prometheus"). The `pg16` tag is Postgres 16, matching CLAUDE.md.
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: ims-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ims
+      POSTGRES_PASSWORD: ims
+      POSTGRES_DB: ims
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # init.sql runs once on first boot and enables the timescaledb
+      # extension on the ims database.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ims -d ims"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  mongo:
+    image: mongo:7.0.14
+    container_name: ims-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ims
+      MONGO_INITDB_ROOT_PASSWORD: ims
+      MONGO_INITDB_DATABASE: ims
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Authenticated ping. The healthcheck must use the same creds the
+      # backend will use, otherwise we'd be lying about readiness.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --username
+        - ims
+        - --password
+        - ims
+        - --authenticationDatabase
+        - admin
+        - --eval
+        - "db.adminCommand('ping').ok"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: ims-redis
+    restart: unless-stopped
+    # AOF off — debounce state is ephemeral by design (01-architecture §5.5:
+    # "if Redis is unavailable, the system degrades to always-CREATED"), so
+    # losing it on restart is acceptable and keeps writes cheap.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres-data:
+  mongo-data:

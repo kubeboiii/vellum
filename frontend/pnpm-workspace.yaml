@@ -1,0 +1,5 @@
+# pnpm 11 requires explicit allow/deny for deps that run post-install
+# scripts. `unrs-resolver` is a transitive dep of eslint-config-next;
+# safe to allow (it just builds a native binding).
+allowBuilds:
+  unrs-resolver: true
