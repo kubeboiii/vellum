@@ -7,9 +7,9 @@
 
 ## Current state
 
-**Phase:** 0 (planning) — *no code yet*
-**Last session ended:** Foundation docs complete (`CLAUDE.md`, `00-master-prd.md`, `01-architecture.md`)
-**Next action:** Start Phase 1 (Foundation) per `docs/build-plan-backend.md` §Phase 1
+**Phase:** 1 (Foundation) — *complete, awaiting review*
+**Last session ended:** 2026-05-11. Repo scaffolded. Docker Compose brings Postgres+TimescaleDB, MongoDB, Redis to healthy state. Go module `github.com/kubeboiii/ims` builds; `go run ./cmd/ims` starts an empty Gin server on `:8080` with a `/health` placeholder. Next.js 14 app (App Router, TS, Tailwind) scaffolded in `frontend/` and `pnpm build` is clean. README and decisions log updated.
+**Next action:** Begin Phase 2 (Ingestion & Backpressure). First write `docs/phases/phase-2-ingestion.md` (it doesn't exist yet), then implement: `POST /v1/signals` handler, signal model, bounded channel (cap 50K), worker pool (`NumCPU()*2`), per-source token-bucket rate limiter, `/health` upgrade, metrics ticker. Acceptance: vegeta load test sustains 10K rps for 60s with p99 < 50ms.
 
 ---
 
@@ -17,7 +17,7 @@
 
 Tick boxes as phases complete. Each phase has acceptance criteria in its build-plan section that must be met before ticking.
 
-- [ ] **Phase 1 — Foundation** (Day 1): repo scaffolding, Docker Compose with all 4 DBs running, empty Go module, empty Next.js app, README skeleton
+- [x] **Phase 1 — Foundation** (Day 1): repo scaffolding, Docker Compose with all 4 DBs running, empty Go module, empty Next.js app, README skeleton
 - [ ] **Phase 2 — Ingestion & Backpressure** (Day 2): HTTP endpoint, bounded channel, worker pool, token-bucket rate limiter, `/health`, metrics ticker, **load test proves 10K signals/sec**
 - [ ] **Phase 3 — Debounce & Persistence Fan-out** (Day 3): Redis Lua debounce, Mongo raw signal writes, Postgres work-item writes, TimescaleDB metric writes, retry-with-backoff, dead-letter
 - [ ] **Phase 4 — Workflow Engine** (Day 4): State pattern, Strategy pattern (alerters), RCA model + validation, MTTR calculation, transactional state transitions, unit tests

@@ -1,0 +1,33 @@
+# Local env overrides
+.env
+.env.local
+.env.*.local
+
+# Go
+backend/bin/
+backend/ims
+*.out
+*.test
+coverage.out
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker/postgres/data/
+docker/mongo/data/
