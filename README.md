@@ -25,7 +25,6 @@ For the full picture, read in order:
 2. [`docs/01-architecture.md`](docs/01-architecture.md) — how it's built (with detailed diagrams)
 3. [`docs/decisions.md`](docs/decisions.md) — every non-obvious choice, with rationale
 4. [`docs/prompts.md`](docs/prompts.md) — per-phase narrative of what was asked of Claude
-5. [`docs/phases/`](docs/phases/) — day-by-day specs for each phase
 
 ---
 
