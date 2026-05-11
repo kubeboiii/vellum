@@ -31,3 +31,6 @@ Thumbs.db
 # Docker
 docker/postgres/data/
 docker/mongo/data/
+
+# Load-test artifacts
+.loadtest/

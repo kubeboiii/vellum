@@ -4,7 +4,7 @@ A backend-heavy distributed system that ingests failure signals at **10K/sec**,
 debounces them into work items, runs them through a state-machine lifecycle
 with mandatory RCA on closure, and exposes a Next.js dashboard for triage.
 
-Built as a 7-day engineering assignment. Currently at **Phase 1 (Foundation)**.
+Built as a 7-day engineering assignment. Currently at **Phase 2 (Ingestion & Backpressure)** — sustaining 10,000 req/sec with p99 < 2 ms.
 
 For the full picture, read in order:
 
@@ -27,9 +27,13 @@ docker compose -f docker/compose.yaml up -d
 # 2. Wait for healthchecks (~10s on a warm host).
 docker compose -f docker/compose.yaml ps
 
-# 3. Run the backend (Phase 1 = empty Gin server on :8080).
+# 3. Run the backend (Phase 2 = ingestion pipeline on :8080).
 cd backend && go run ./cmd/ims
-# -> curl http://localhost:8080/health  =>  {"phase":1,"status":"healthy"}
+# -> curl http://localhost:8080/health   => 200, queue depth + counters
+# -> curl -X POST http://localhost:8080/v1/signals \
+#         -H 'Content-Type: application/json' \
+#         -d '{"component_id":"RDBMS_PRIMARY_01","component_type":"RDBMS","severity":"P0","source":"datadog","payload":{"err":"oom"}}'
+#    => 202 {"signal_id":"...","status":"accepted"}
 
 # 4. Run the frontend (Phase 1 = placeholder page).
 cd frontend && pnpm dev
@@ -72,7 +76,7 @@ Image tags are pinned to keep `docker compose up` reproducible on a fresh
 clone (R5 in 00-master-prd §10.1). **Do not bump versions without an entry
 in `docs/decisions.md`.**
 
-## Phase 1 acceptance
+## Phase 1 acceptance (Foundation)
 
 - [x] `docker compose -f docker/compose.yaml up` brings Postgres (with the
       TimescaleDB extension loaded), MongoDB, and Redis to a `healthy` state.
@@ -88,12 +92,54 @@ in `docs/decisions.md`.**
 > and §12). That's a deliberate choice to reduce ops surface and is the
 > standard deployment pattern.
 
-## What Phase 1 does *not* do
+## Phase 2 acceptance (Ingestion & Backpressure)
 
-No application logic. No ingestion handlers, no debouncer, no workflow, no
-persistence wiring. The internal package directories exist but are empty.
-Phase 2 (Ingestion & Backpressure) adds the HTTP signal endpoint and the
-bounded-channel worker pool.
+- [x] `POST /v1/signals` accepts a single JSON signal and returns 202
+      with `{"signal_id":"...","status":"accepted"}`.
+- [x] Returns 400 on validation failure, 429 on rate limit, 503 when the
+      queue is full (with `Retry-After: 1` header).
+- [x] Bounded `chan model.Signal` (default capacity 50,000) feeds a worker
+      pool (default `runtime.NumCPU() * 2`).
+- [x] Per-source token-bucket rate limiter (`golang.org/x/time/rate`),
+      default 1000 req/s with burst 2000 (FR-1.6).
+- [x] `/health` returns 200 with queue depth, capacity, and atomic
+      counters; flips to 503 when the queue is >95% full.
+- [x] Stdout metrics line every 5s: `[metrics] accepted=X/s processed=Y/s
+      queue=D/C errors=E/s total_accepted=… total_dropped=…`.
+- [x] Graceful shutdown on SIGINT/SIGTERM: HTTP listener stops first,
+      then the pipeline drains within `IMS_SHUTDOWN_TIMEOUT` (default 30s).
+- [x] **Load test:** `./scripts/load-test.sh` reports 10,000 req/s sustained
+      for 60s, 100% success, p99 = 1.89 ms (target ≤ 50 ms), 0 dropped.
+
+### Phase 2 config (env vars, with defaults)
+
+| Var | Default | Purpose |
+|---|---|---|
+| `IMS_HTTP_ADDR` | `:8080` | bind address |
+| `IMS_QUEUE_CAPACITY` | `50000` | bounded-channel depth (~5s of nominal at 10K/s) |
+| `IMS_WORKER_COUNT` | `NumCPU()*2` | consumer goroutines |
+| `IMS_RATE_LIMIT_RPS` | `1000` | per-source token refill rate (FR-1.6) |
+| `IMS_RATE_LIMIT_BURST` | `2000` | per-source burst tolerance |
+| `IMS_METRICS_INTERVAL` | `5s` | stdout metrics cadence (FR-8.2) |
+| `IMS_SHUTDOWN_TIMEOUT` | `30s` | drain deadline (NFR-2.4) |
+
+### Running the load test yourself
+
+```bash
+# Terminal 1 — boot the backend with rate limit lifted for single-host benchmark
+cd backend && IMS_RATE_LIMIT_RPS=20000 IMS_RATE_LIMIT_BURST=40000 go run ./cmd/ims
+
+# Terminal 2 — run vegeta
+./scripts/load-test.sh   # RATE=10000 DURATION=60s
+```
+
+The script writes vegeta artifacts to `.loadtest/` (gitignored).
+
+## What Phase 2 does *not* do
+
+No persistence. The worker's processor is a no-op (counts and discards).
+Phase 3 wires Redis Lua debounce, Mongo raw-signal writes, Postgres work
+items, TimescaleDB metrics, plus retry-with-backoff and dead-letter.
 
 ## Decisions log
 
