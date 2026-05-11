@@ -7,9 +7,9 @@
 
 ## Current state
 
-**Phase:** 1 (Foundation) — *complete, awaiting review*
-**Last session ended:** 2026-05-11. Repo scaffolded. Docker Compose brings Postgres+TimescaleDB, MongoDB, Redis to healthy state. Go module `github.com/kubeboiii/ims` builds; `go run ./cmd/ims` starts an empty Gin server on `:8080` with a `/health` placeholder. Next.js 14 app (App Router, TS, Tailwind) scaffolded in `frontend/` and `pnpm build` is clean. README and decisions log updated.
-**Next action:** Begin Phase 2 (Ingestion & Backpressure). First write `docs/phases/phase-2-ingestion.md` (it doesn't exist yet), then implement: `POST /v1/signals` handler, signal model, bounded channel (cap 50K), worker pool (`NumCPU()*2`), per-source token-bucket rate limiter, `/health` upgrade, metrics ticker. Acceptance: vegeta load test sustains 10K rps for 60s with p99 < 50ms.
+**Phase:** 2 (Ingestion & Backpressure) — *complete, on branch `phase-2-ingestion`*
+**Last session ended:** 2026-05-11. Implemented `internal/model` (Signal + Validate), `internal/pipeline` (bounded channel + worker pool + graceful drain + atomic counters), `internal/ingest` (POST /v1/signals handler + per-source token-bucket rate limiter), and `internal/obs` (queue-aware /health + 5s metrics ticker). Wired in `cmd/ims/main.go` with env-driven config and ordered shutdown (HTTP listener first, then pipeline drain). All packages have unit tests; `go test -race ./...` clean. Vegeta load test (`scripts/load-test.sh`) sustained 10,000 req/s for 60s with 100% success, p99 = 1.89 ms (target ≤ 50 ms), 0 dropped.
+**Next action:** Begin Phase 3 (Debounce & Persistence Fan-out). First write `docs/phases/phase-3-debounce.md`. Then: implement `internal/persist/pg` (pgx pool + work_items table + migrations), `internal/persist/mongo` (raw signal writes), `internal/persist/redis` (Lua debounce script), `internal/persist/timescale` (signal_metrics hypertable). Replace `pipeline.NoopProcessor` with a real processor that runs the Redis Lua debounce script, fans out to Mongo + Postgres + Timescale, retries with exponential backoff, dead-letters on exhaustion. Upgrade `/health` to ping each dep. Acceptance: failure simulator shoots 200 signals at one component_id in 8 seconds; Postgres shows 1–3 work items, Mongo shows ~200 raw signals, reduction ratio ≥ 60×.
 
 ---
 
@@ -18,7 +18,7 @@
 Tick boxes as phases complete. Each phase has acceptance criteria in its build-plan section that must be met before ticking.
 
 - [x] **Phase 1 — Foundation** (Day 1): repo scaffolding, Docker Compose with all 4 DBs running, empty Go module, empty Next.js app, README skeleton
-- [ ] **Phase 2 — Ingestion & Backpressure** (Day 2): HTTP endpoint, bounded channel, worker pool, token-bucket rate limiter, `/health`, metrics ticker, **load test proves 10K signals/sec**
+- [x] **Phase 2 — Ingestion & Backpressure** (Day 2): HTTP endpoint, bounded channel, worker pool, token-bucket rate limiter, `/health`, metrics ticker, **load test proves 10K signals/sec** *(verified: 600K req over 60s, 100% success, p99 1.89 ms)*
 - [ ] **Phase 3 — Debounce & Persistence Fan-out** (Day 3): Redis Lua debounce, Mongo raw signal writes, Postgres work-item writes, TimescaleDB metric writes, retry-with-backoff, dead-letter
 - [ ] **Phase 4 — Workflow Engine** (Day 4): State pattern, Strategy pattern (alerters), RCA model + validation, MTTR calculation, transactional state transitions, unit tests
 - [ ] **Phase 5 — gRPC + Frontend** (Day 5): gRPC streaming endpoint sharing pipeline, Next.js dashboard (live feed, detail, RCA form)
@@ -49,8 +49,8 @@ Tick boxes as phases complete. Each phase has acceptance criteria in its build-p
 
 | Metric | Target | Achieved | When measured |
 |---|---|---|---|
-| Sustained ingestion | 10,000 sig/sec for 60s | — | end Phase 2 |
-| p99 ingestion latency | < 50ms | — | end Phase 2 |
+| Sustained ingestion | 10,000 sig/sec for 60s | **10,000/s, 0 dropped** | 2026-05-11 (Phase 2) |
+| p99 ingestion latency | < 50ms | **1.89 ms** | 2026-05-11 (Phase 2) |
 | Debounce reduction ratio | ≥ 60× (100 signals → 1 work item) | — | end Phase 3 |
 | Unit test coverage (core pkgs) | ≥ 60% | — | end Phase 4 |
 | `docker compose up` to healthy | < 90s | — | end Phase 7 |

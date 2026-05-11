@@ -187,6 +187,72 @@
 
 ---
 
+## 2026-05-11 — Phase 2: queue capacity 50,000, worker count `NumCPU()*2`
+
+**Context:** The bounded channel between handlers and workers needs two numbers — its depth and the size of the consumer pool. Both are tunables, both affect the load-test outcome.
+
+**Decision:** Default queue capacity 50,000 (5 seconds of nominal at 10K/sec). Default worker count `runtime.NumCPU() * 2` (on this 10-core M-series box = 20 workers). Both are env-overridable (`IMS_QUEUE_CAPACITY`, `IMS_WORKER_COUNT`).
+
+**Why:** Capacity follows 01-arch §4.2 directly — enough buffer to absorb a 5-second persistence stall without immediate 503s, small enough to keep memory bounded (~20MB for 50K Signal structs). `NumCPU()*2` is the standard I/O-bound oversubscription heuristic (01-arch §4.3); workers spend most of their time waiting on Redis/Postgres/Mongo, so packing more goroutines per core is correct.
+
+**Alternatives considered:**
+- Unbounded queue — would OOM under sustained burst, violates the entire FR-1.5 / NFR-2.1 backpressure story.
+- `NumCPU()` workers — under-utilizes during I/O waits; verified empirically in Phase 2 load test that NumCPU()*2 handled 10K/sec with workers always idle (queue depth pinned at 0).
+- Fixed worker count (e.g. 100) — doesn't adapt to host; bad on small dev boxes.
+
+**Impact:** Verified Phase 2: 600K requests over 60s @ 10K/sec, 100% success, p99 = 1.89 ms, 0 dropped, queue depth never exceeded a handful (workers always outpaced producers under noop processing). Real numbers will shift in Phase 3 when the processor does Redis Lua + Postgres + Mongo writes — re-measure.
+
+---
+
+## 2026-05-11 — Phase 2: load test bumps `IMS_RATE_LIMIT_RPS` to 20,000
+
+**Context:** Default per-source rate limit is 1000 req/sec (FR-1.6). Vegeta runs from a single host, so every test request hits the same source IP (127.0.0.1) and would 429 immediately.
+
+**Decision:** `scripts/load-test.sh` boots (or expects the caller to boot) the backend with `IMS_RATE_LIMIT_RPS=20000 IMS_RATE_LIMIT_BURST=40000`. The limiter is still in the request path — we just configure it so a single-host test isn't bottlenecked by it.
+
+**Why:** The rate limiter's job is to protect the system from one chatty source (FR-1.6 says "default 1000/sec per source"). For a single-host benchmark, treating localhost as a "fleet" reflects what the production constraint actually does: rate-limit per source IP, not globally. Globally, the system is sized for 10K/sec aggregate (NFR-1.1).
+
+**Alternatives considered:**
+- Spoof X-Forwarded-For in vegeta to rotate fake IPs — overcomplicates the test, requires trusting proxies in Gin config.
+- Run vegeta from multiple boxes — out of scope for a 7-day demo.
+- Disable the rate limiter entirely during load test — would not exercise the limiter's overhead at all (~50ns/call). Want it in the loop so the measured p99 includes it.
+
+**Impact:** README and load-test.sh both document this. Anyone running the script needs to know about the env override.
+
+---
+
+## 2026-05-11 — Phase 2: shutdown order is HTTP-then-pipeline, not parallel
+
+**Context:** On SIGINT we need to drain in-flight HTTP requests AND in-flight queue items. If we close the pipeline first, in-flight handlers panic on a send to a closed channel.
+
+**Decision:** Sequential shutdown in `cmd/ims/main.go`: (1) `srv.Shutdown(ctx)` blocks until HTTP handlers return; (2) `pipe.Stop()` then closes the input channel and drains workers; (3) wait on `pipe.Done()`. Total budget bounded by `IMS_SHUTDOWN_TIMEOUT` (default 30s, matches NFR-2.4).
+
+**Why:** It's the only ordering that's race-free without adding a separate "draining" flag readable by the handler. Once `srv.Shutdown` returns, no goroutine can be inside `Submit`, so closing the channel is safe.
+
+**Alternatives considered:**
+- Atomic "draining" flag checked by Submit before send — works but adds a load per request on the hot path.
+- Cancel root ctx and let everything die — handlers leak panics on the closed channel; bad UX.
+
+**Impact:** Verified by SIGINT during the load test — server printed `[metrics-final]` summary, drained cleanly, returned exit 0.
+
+---
+
+## 2026-05-11 — Phase 2: rate-limiter `lastSeen` uses `atomic.Int64` (UnixNano), not a mutex
+
+**Context:** The hot path needs to update each bucket's "last touched" timestamp on every request so the sweeper can evict idle buckets. Doing this under the map's RWMutex would force the hot path to take the write lock on every hit.
+
+**Decision:** Store `lastSeenNano` as `atomic.Int64`. Hot path does `b.lastSeenNano.Store(now.UnixNano())` — lock-free. Sweeper reads with `.Load()` under the map's write lock (which it must hold anyway to delete entries).
+
+**Why:** Caught by `-race` in `TestRateLimiter_ConcurrentBucketCreation`. The original draft had a plain `time.Time` field updated outside the mutex on the assumption that "stale-by-one-tick is fine" — true semantically, but a data race on a non-atomic field is undefined behaviour, not "slightly stale." Atomic Int64 is the cheapest fix that keeps the lock-free hot path.
+
+**Alternatives considered:**
+- Take the write lock on every request — kills concurrency on the hot path; rate-limiter becomes a global contention point.
+- Update lastSeen inside the sweeper only — works but means a bucket's "last seen" is the last sweep tick, not its last request, so eviction is less precise.
+
+**Impact:** `internal/ingest/ratelimit.go` is now race-clean. Worth flagging in interviews — small example of where "obviously benign" data races are not actually benign.
+
+---
+
 <!--
 TEMPLATE for new entries — copy and fill in:
 
