@@ -2,10 +2,56 @@
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+
+# Keys & certs (defensive)
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_ed25519
+
+# Cloud credentials
+.aws/
+gcp-*.json
+service-account*.json
+firebase-adminsdk*.json
+
+# Terraform (future-proofing)
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+*.tfvars
+!*.tfvars.example
+
+# Backups / dumps
+*.bak
+*.backup
+*.orig
+*.dump
+*.sql.gz
+
+# Local DBs
+*.sqlite
+*.sqlite3
+*.db
+
+# Node debug dumps
+*.heapsnapshot
+*.cpuprofile
+
+# Python
+__pycache__/
+*.pyc
 
 # Go
 backend/bin/
-backend/ims
+backend/vellum
 *.out
 *.test
 coverage.out
@@ -23,11 +69,15 @@ yarn-debug.log*
 .idea/
 .vscode/
 .claude/
+.cursor/
+.aider*
+.history/
 *.swp
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Docker
 docker/postgres/data/

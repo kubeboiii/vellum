@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+//go:embed script.lua
 var scriptBody string
 
 func ScriptBody() string { return scriptBody }

@@ -142,6 +142,13 @@ func main() {
 	go limiter.RunSweeper(rootCtx)
 
 	r := gin.New()
+	// Trust no proxies: c.ClientIP() returns the direct peer's address
+	// instead of an X-Forwarded-For header any client can forge. The
+	// rate limiter keys off ClientIP(), so this matters for FR-1.6.
+	// Override in production by configuring a known reverse-proxy IP.
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Fatalf("set trusted proxies: %v", err)
+	}
 	r.Use(gin.Recovery())
 
 	r.Use(corsMiddleware(cfg.corsOrigins))
@@ -171,10 +178,18 @@ func main() {
 
 	go obs.NewMetricsTicker(pipe, cfg.metricsInterval).Run(rootCtx)
 
+	// Full set of HTTP server timeouts. ReadHeaderTimeout alone
+	// (the pre-Phase-7 default) was vulnerable to slowloris on the
+	// body. The numbers here are generous for a 10K-signals/sec
+	// system because all hot-path I/O happens off the request
+	// goroutine — clients hand off in milliseconds.
 	srv := &http.Server{
 		Addr:              cfg.httpAddr,
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	serverErr := make(chan error, 1)

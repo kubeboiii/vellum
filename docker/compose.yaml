@@ -27,7 +27,7 @@ services:
       POSTGRES_PASSWORD: vellum
       POSTGRES_DB: vellum
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # init.sql runs once on first boot and enables the timescaledb
@@ -49,7 +49,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: vellum
       MONGO_INITDB_DATABASE: vellum
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -81,7 +81,7 @@ services:
     # losing it on restart is acceptable and keeps writes cheap.
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
