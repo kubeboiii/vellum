@@ -28,22 +28,22 @@ const (
 // They get populated in Phase 4 when the State pattern transitions us
 // through INVESTIGATING → RESOLVED → CLOSED.
 type WorkItem struct {
-	ID            uuid.UUID
-	ComponentID   string
-	ComponentType ComponentType
-	Severity      Severity
-	Status        Status
-	SignalCount   int
-	FirstSignalTS time.Time
-	LastSignalTS  time.Time
+	ID            uuid.UUID     `json:"id"`
+	ComponentID   string        `json:"component_id"`
+	ComponentType ComponentType `json:"component_type"`
+	Severity      Severity      `json:"severity"`
+	Status        Status        `json:"status"`
+	SignalCount   int           `json:"signal_count"`
+	FirstSignalTS time.Time     `json:"first_signal_ts"`
+	LastSignalTS  time.Time     `json:"last_signal_ts"`
 
-	MTTRSeconds   *int
-	IncidentStart *time.Time
-	IncidentEnd   *time.Time
-	ClosedAt      *time.Time
+	MTTRSeconds   *int       `json:"mttr_seconds,omitempty"`
+	IncidentStart *time.Time `json:"incident_start,omitempty"`
+	IncidentEnd   *time.Time `json:"incident_end,omitempty"`
+	ClosedAt      *time.Time `json:"closed_at,omitempty"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NewWorkItem builds an OPEN-state Work Item from the first signal of a

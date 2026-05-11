@@ -4,7 +4,7 @@ A backend-heavy distributed system that ingests failure signals at **10K/sec**,
 debounces them into work items, runs them through a state-machine lifecycle
 with mandatory RCA on closure, and exposes a Next.js dashboard for triage.
 
-Built as a 7-day engineering assignment. Currently at **Phase 3 (Debounce & Persistence Fan-out)** — 10K signals/sec sustained with full polyglot persistence; debounce reduction ratio 100×.
+Built as a 7-day engineering assignment. Currently at **Phase 4 (Workflow Engine)** — State pattern, Strategy-pattern alerters, transactional state transitions, mandatory RCA on close.
 
 For the full picture, read in order:
 
@@ -180,13 +180,82 @@ The script writes vegeta artifacts to `.loadtest/` (gitignored).
 | `IMS_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
 | `IMS_DEP_PING_TIMEOUT` | `500ms` | per-dep /health budget |
 
-### What Phase 3 does *not* do
+## Phase 4 acceptance (Workflow Engine)
 
-No state machine, no transitions, no RCA validation, no alerting.
-The processor only ever creates work_items in `OPEN` state. Phase 4
-adds the State pattern (Open → Investigating → Resolved → Closed),
-the Strategy pattern for alerters (PagerDutyStub / Slack / Console),
-the RCA model, and MTTR computation in `ClosedState.OnEnter`.
+- [x] Migration 004 creates the `rca` table with DB-level CHECK
+      constraints mirroring app-level `RCA.Validate()`.
+- [x] State pattern in `internal/workflow`: `OpenState`,
+      `InvestigatingState`, `ResolvedState`, `ClosedState`, each
+      implementing `State` with `Name`, `CanTransitionTo`, `OnEnter`.
+- [x] `ResolvedState.CanTransitionTo(ClosedState)` is the **single**
+      enforcement point for "RCA required to close" (CLAUDE.md rule 3).
+- [x] `ClosedState.OnEnter` computes MTTR and stamps it on the WI.
+- [x] Transitions run in a SERIALIZABLE pgx tx with
+      `SELECT FOR UPDATE` (CLAUDE.md rule 2 + FR-4.4).
+- [x] Strategy pattern in `internal/alert`: `PagerDutyStub` (P0,
+      logs structured JSON), `SlackAlerter` (P1/P2, HTTP POST if
+      `SLACK_WEBHOOK_URL` set, else console), `ConsoleAlerter` (P3 +
+      fallback). One-file adds a new alerter.
+- [x] Alert dispatch on CREATED is async (`go alerter.Dispatch(...)`),
+      5s timeout, errors logged not dead-lettered (FR-6.4).
+- [x] HTTP endpoints (`internal/api`):
+      `GET /v1/incidents`, `GET /v1/incidents/:id`,
+      `PATCH /v1/incidents/:id/state`,
+      `POST /v1/incidents/:id/rca` (compound RCA-insert + close in
+      one tx).
+- [x] `go test -race ./...` clean across **12 packages**, including
+      `TestEngine_ConcurrentClose_ExactlyOneWins` (2 goroutines try to
+      close the same WI; exactly one succeeds).
+- [x] **PRD G3 end-to-end** (PATCH to CLOSED with no RCA → 422; with
+      short RCA → 422 with field details; with complete RCA → 201
+      with `mttr_seconds` populated). Verified via curl against a
+      live stack.
+
+### Phase 4 env vars (added this phase)
+
+| Var | Default | Purpose |
+|---|---|---|
+| `SLACK_WEBHOOK_URL` | (empty) | If set, P1/P2 alerts HTTP POST here. Else Console. |
+| `IMS_ALERTER_TIMEOUT` | `5s` | Per-dispatch timeout (FR-6.4). |
+
+### Try the PRD G3 scenario yourself
+
+```bash
+# Boot the stack + run migrations + start the backend (Phase 3 steps).
+
+# 1. Fire a signal to create a P0 incident (PagerDuty stub fires).
+curl -X POST -H 'Content-Type: application/json' http://localhost:8080/v1/signals \
+  -d '{"component_id":"DEMO_1","component_type":"CACHE","severity":"P0","source":"manual","payload":{}}'
+
+# 2. List active incidents and grab the ID.
+curl http://localhost:8080/v1/incidents | jq '.items[0].id'
+
+# 3. Advance through the lifecycle.
+WI_ID=<paste-id>
+curl -X PATCH -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/state \
+  -d '{"to":"INVESTIGATING"}'
+curl -X PATCH -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/state \
+  -d '{"to":"RESOLVED"}'
+
+# 4. Try to close without RCA → 422.
+curl -X PATCH -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/state \
+  -d '{"to":"CLOSED"}'
+
+# 5. Submit a complete RCA → 201 with MTTR.
+curl -X POST -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/rca \
+  -d '{
+    "root_cause_category":"INFRASTRUCTURE",
+    "fix_applied":"Rebooted the cache cluster and bumped pool size.",
+    "prevention_steps":"Add a synthetic monitor for pool saturation.",
+    "submitted_by":"sre@example.com"
+  }'
+```
+
+### What Phase 4 does *not* do
+
+No gRPC ingestion, no frontend. The new API endpoints exist for the
+Phase 5 dashboard to consume; the dashboard itself (Next.js pages,
+live polling, RCA form) ships in Phase 5.
 
 ## Decisions log
 

@@ -139,7 +139,7 @@ func TestProcess_CreatedFlow(t *testing.T) {
 	sig := &fakeSignals{}
 	mw := &fakeMetrics{}
 	dl := &fakeDeadLetter{}
-	p := New(fastConfig(), d, wi, sig, mw, dl)
+	p := New(fastConfig(), d, wi, sig, mw, dl, nil)
 
 	if err := p.Process(context.Background(), sampleSignal()); err != nil {
 		t.Fatalf("process: %v", err)
@@ -165,7 +165,7 @@ func TestProcess_JoinedFlow(t *testing.T) {
 		WorkItemID: uuid.New(), Action: debounce.ActionJoined, Count: 2,
 	}}
 	wi := &fakeWorkItems{}
-	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{})
+	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{}, nil)
 
 	if err := p.Process(context.Background(), sampleSignal()); err != nil {
 		t.Fatalf("process: %v", err)
@@ -190,7 +190,7 @@ func TestProcess_RedisDegradedKeepsGoing(t *testing.T) {
 		err: debounce.ErrRedisDegraded,
 	}
 	wi := &fakeWorkItems{}
-	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{})
+	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{}, nil)
 
 	if err := p.Process(context.Background(), sampleSignal()); err != nil {
 		t.Fatalf("process should swallow ErrRedisDegraded, got %v", err)
@@ -211,7 +211,7 @@ func TestProcess_RetryOnFlakyPostgres(t *testing.T) {
 		insertErrOnce: true,
 	}
 	dl := &fakeDeadLetter{}
-	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, dl)
+	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, dl, nil)
 
 	if err := p.Process(context.Background(), sampleSignal()); err != nil {
 		t.Fatalf("process: %v", err)
@@ -232,7 +232,7 @@ func TestProcess_DeadLetterOnExhaustion(t *testing.T) {
 	}}
 	wi := &fakeWorkItems{insertErr: errors.New("postgres is down")}
 	dl := &fakeDeadLetter{}
-	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, dl)
+	p := New(fastConfig(), d, wi, &fakeSignals{}, &fakeMetrics{}, dl, nil)
 
 	if err := p.Process(context.Background(), sampleSignal()); err != nil {
 		t.Fatalf("process should swallow sink errors, got %v", err)
@@ -252,7 +252,7 @@ func TestProcess_DeadLetterOnExhaustion(t *testing.T) {
 // return the error so the pipeline counts it.
 func TestProcess_DebouncerHardError(t *testing.T) {
 	d := &fakeDebouncer{err: errors.New("script gone")}
-	p := New(fastConfig(), d, &fakeWorkItems{}, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{})
+	p := New(fastConfig(), d, &fakeWorkItems{}, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{}, nil)
 
 	err := p.Process(context.Background(), sampleSignal())
 	if err == nil {
