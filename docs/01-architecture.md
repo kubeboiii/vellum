@@ -26,15 +26,33 @@ This document does not duplicate requirements (see `00-master-prd.md`) and does 
 
 The IMS is the orchestration layer between raw observability signals and human responders. At the boundaries:
 
-```
-+----------------------+        +---------------------+        +------------------+
-|  Producers           |        |                     |        |  Consumers       |
-|  - Observability     | -----> |       IMS           | -----> |  - Dashboard UI  |
-|    agents            | HTTP / |   (this system)     |  HTTP  |  - Alerters      |
-|  - App exception     | gRPC   |                     |   /    |  - Slack / PD    |
-|    hooks             |        |                     | webhook|                  |
-|  - Synthetic monitor |        |                     |        |                  |
-+----------------------+        +---------------------+        +------------------+
+```mermaid
+flowchart LR
+    subgraph producers["Producers"]
+        direction TB
+        agents["Observability agents"]
+        hooks["App exception hooks"]
+        synth["Synthetic monitors"]
+    end
+
+    ims["<b>IMS</b><br/>(this system)<br/><br/>aggregate · debounce<br/>lifecycle · alert"]
+
+    subgraph consumers["Consumers"]
+        direction TB
+        dash["Dashboard UI"]
+        slack["Slack webhook"]
+        pd["PagerDuty (stub)"]
+    end
+
+    producers -- "HTTP / gRPC<br/>10k signals/sec" --> ims
+    ims -- "REST" --> dash
+    ims -- "webhook" --> slack
+    ims -- "stub" --> pd
+
+    classDef sys fill:#0a0a0a,stroke:#bef264,stroke-width:2px,color:#bef264
+    classDef boundary fill:#1a1a1a,stroke:#3f3f46,color:#d4d4d8
+    class ims sys
+    class producers,consumers boundary
 ```
 
 Producers emit signals at high rates. The IMS aggregates them into work items, runs them through a lifecycle, and emits alerts. Consumers are humans (via dashboard) and machines (alerter webhooks).
@@ -47,31 +65,44 @@ For this build, producers are mocked by the failure-simulator script in `/script
 
 All processes run as containers in a single docker-compose network. Production would split these across hosts; the design supports it but the dev environment co-locates them.
 
-```
-         +------------------+        +---------------------+
-HTTP --> |  ims-backend     | <----> |   Redis             |
-gRPC --> |  (Go service)    |        |   - debounce state  |
-         |                  |        |   - dashboard cache |
-         |  - HTTP server   |        +---------------------+
-         |  - gRPC server   |        +---------------------+
-         |  - worker pool   | -----> |   PostgreSQL +      |
-         |  - debouncer     |        |   TimescaleDB       |
-         |  - workflow     |        |   - work_items      |
-         |  - alerter      |        |   - rca             |
-         |  - metrics      |        |   - state_trans     |
-         +------------------+        |   - signal_metrics  |
-                ^                    +---------------------+
-                |                    +---------------------+
-                |                    |   MongoDB           |
-                |                    |   - signals         |
-                |                    |   - dead_letter     |
-                |                    +---------------------+
-                |
-                |
-         +------------------+
-         |  ims-frontend    |
-         |  (Next.js)       |
-         +------------------+
+```mermaid
+flowchart LR
+    http[/"HTTP :8080"/]
+    grpc[/"gRPC :9090"/]
+
+    subgraph backend["ims-backend (Go, single binary)"]
+        direction TB
+        api["HTTP + gRPC handlers"]
+        rl["Rate limiter<br/>(token bucket)"]
+        chan["Bounded channel<br/>cap = 50,000"]
+        pool["Worker pool<br/>(goroutines)"]
+        deb["Debouncer<br/>(Lua on Redis)"]
+        wf["Workflow engine<br/>(State pattern)"]
+        alr["Alerters<br/>(Strategy pattern)"]
+        api --> rl --> chan --> pool --> deb --> wf --> alr
+    end
+
+    redis[("<b>Redis</b><br/>debounce state<br/>dashboard cache")]
+    pg[("<b>Postgres + TimescaleDB</b><br/>work_items · rca<br/>state_transitions<br/>signal_metrics")]
+    mongo[("<b>MongoDB</b><br/>signals<br/>dead_letter")]
+
+    frontend["ims-frontend<br/>(Next.js dashboard)"]
+
+    http --> api
+    grpc --> api
+    deb -. atomic Lua .-> redis
+    pool -. raw signal .-> mongo
+    wf -. transactional .-> pg
+    alr -. timeseries .-> pg
+
+    frontend -- REST polls --> api
+
+    classDef store fill:#0a0a0a,stroke:#bef264,stroke-width:1.5px,color:#d4d4d8
+    classDef proc fill:#1a1a1a,stroke:#3f3f46,color:#d4d4d8
+    classDef edge fill:#0a0a0a,stroke:#a78bfa,color:#a78bfa
+    class redis,pg,mongo store
+    class api,rl,chan,pool,deb,wf,alr proc
+    class http,grpc,frontend edge
 ```
 
 ### 3.1 Single-binary backend

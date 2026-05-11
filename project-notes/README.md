@@ -24,8 +24,8 @@
 | 3 | [phase-3-debounce-qa.md](phase-3-debounce-qa.md) | Redis Lua atomic ops, polyglot persistence fan-out, retry+backoff, dead-letter, hypertables, testcontainers |
 | 4 | [phase-4-workflow-qa.md](phase-4-workflow-qa.md) | State pattern, Strategy pattern, RCA validation, MTTR, SERIALIZABLE transactions, SELECT FOR UPDATE |
 | 5 | [phase-5-grpc-frontend-qa.md](phase-5-grpc-frontend-qa.md) | gRPC bidi-streaming, protobuf, Next.js Server vs Client Components, CORS, SQLSTATE 40001 → 409 |
-| 6 | *(TBD)* | Failure simulation, chaos testing, resilience patterns |
-| 7 | *(TBD)* | Documentation, demo, polish |
+| 6 | [phase-6-resilience-qa.md](phase-6-resilience-qa.md) | Concurrency stress testing, integration testing strategy, build tags, headless simulator design |
+| 7 | [phase-7-docs-polish-qa.md](phase-7-docs-polish-qa.md) | Mermaid in markdown, README composition, decisions log discipline, AI-assisted process |
 
 ## How each doc is structured
 

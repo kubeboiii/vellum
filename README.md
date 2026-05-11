@@ -1,18 +1,31 @@
 # IMS — Mission-Critical Incident Management System
 
-A backend-heavy distributed system that ingests failure signals at **10K/sec**,
-debounces them into work items, runs them through a state-machine lifecycle
-with mandatory RCA on closure, and exposes a Next.js dashboard for triage.
+> **Ingests failure signals at 10K/sec, debounces them into work items via atomic Redis Lua, runs them through a state-machine lifecycle with mandatory RCA on closure, and surfaces them through a Next.js triage dashboard.**
 
-Built as a 7-day engineering assignment. Currently at **Phase 5 (gRPC + Frontend)** — full stack working: HTTP + gRPC ingestion → atomic debounce → polyglot fan-out → State-pattern workflow → Next.js triage dashboard.
+A 7-day backend engineering project demonstrating high-throughput ingestion with backpressure, atomic debounce, polyglot persistence, State + Strategy design patterns, and a polished operator UI. **All 7 phases complete.**
+
+```mermaid
+flowchart LR
+    src["Observability<br/>agents"] -- "HTTP / gRPC<br/>10k/s" --> ingest["Ingest<br/>(bounded channel<br/>+ rate limit)"]
+    ingest --> debounce["Debouncer<br/>(Redis Lua<br/>atomic)"]
+    debounce --> wf["Workflow<br/>(State pattern<br/>+ RCA gate)"]
+    wf --> stores[("<b>Postgres + Mongo<br/>+ Redis + Timescale</b>")]
+    wf -- "Strategy<br/>fanout" --> alert["Alerters<br/>(PagerDuty / Slack<br/>/ Console)"]
+    wf -- "polled" --> dash["Next.js<br/>dashboard"]
+
+    classDef proc fill:#0a0a0a,stroke:#bef264,stroke-width:1.5px,color:#d4d4d8
+    classDef store fill:#0a0a0a,stroke:#a78bfa,stroke-width:1.5px,color:#d4d4d8
+    class ingest,debounce,wf proc
+    class stores store
+```
 
 For the full picture, read in order:
 
 1. [`docs/00-master-prd.md`](docs/00-master-prd.md) — what and why
-2. [`docs/01-architecture.md`](docs/01-architecture.md) — how it's built
-3. `docs/02-data-models.md` — schemas *(Phase 2+)*
-4. `docs/03-api-contract.md` — endpoints *(Phase 2+)*
-5. `docs/phases/phase-N-*.md` — day-by-day prompts *(TBD)*
+2. [`docs/01-architecture.md`](docs/01-architecture.md) — how it's built (with detailed diagrams)
+3. [`docs/decisions.md`](docs/decisions.md) — every non-obvious choice, with rationale
+4. [`docs/prompts.md`](docs/prompts.md) — per-phase narrative of what was asked of Claude
+5. [`docs/phases/`](docs/phases/) — day-by-day specs for each phase
 
 ---
 
@@ -340,6 +353,70 @@ No failure-simulator script, no chaos tests, no WebSocket push.
 The cascading-failure scenario from PRD §7 G6 ships in Phase 6
 (`scripts/simulate-outage.go`), along with an integration test that
 exercises the entire stack against ephemeral containers.
+
+## Phase 6 acceptance (Resilience & Simulation)
+
+| Deliverable | Where | Verification |
+|---|---|---|
+| **Concurrency stress test** | [`backend/internal/debounce/stress_test.go`](backend/internal/debounce/stress_test.go) | 300 goroutines × same `component_id` at the production cap (100) → exactly `ceil(300/100)=3` distinct work_items, 3 CREATED actions. Passes under `-race`. |
+| **Boundary-arithmetic test** | same file | Sequential 101 signals → first 100 JOIN, 101st CREATEs. Deterministic. |
+| **E2E integration test** | [`backend/internal/e2e_integration_test.go`](backend/internal/e2e_integration_test.go) | Behind the `integration` build tag; exercises POST signal → debounce → state machine → RCA gate (422) → CLOSED + MTTR computed → transitions audit. Runs in 0.29s. |
+| **Headless failure simulator** | [`scripts/simulate-outage.go`](scripts/simulate-outage.go) | Three scenarios (rdbms / cache / mcp) producing exact debounce ratios per scenario. |
+
+### Try the PRD G2 scenario yourself
+
+```bash
+# Cache thrash: 200 P2 signals to one component, debouncer must collapse to 2.
+go run ./scripts/simulate-outage.go --scenario cache
+#  → 200 sent, 200 accepted, 2 work_items created, ratio 100.0×
+#  → ✓ debounce held exactly as predicted
+```
+
+```bash
+# Run the integration suite against the live backend on :8080.
+go test -tags=integration -race ./backend/internal/
+#  → PASS: TestE2E_FullLifecycle (0.29s)
+```
+
+### What Phase 6 does *not* do
+
+No new endpoints. No schema changes. Just stress + simulation.
+
+## Phase 7 acceptance (Documentation & Polish)
+
+The final pass. No new code, just making everything reviewable.
+
+| Deliverable | Where |
+|---|---|
+| Final README (this file) | top-level Mermaid pitch + all 7 phase sections + how-to-demo |
+| Mermaid architecture diagrams | [`docs/01-architecture.md`](docs/01-architecture.md) §2, §3; one inlined here |
+| `docs/prompts.md` | [`docs/prompts.md`](docs/prompts.md) — per-phase narrative of what Claude was asked, what worked, what I pushed back on |
+| `decisions.md` final entries | [`docs/decisions.md`](docs/decisions.md) — 27 entries spanning Phases 1–7 |
+| Dry-run from fresh clone | verified: `docker compose up` → backend healthy → `go test -race ./...` clean → `pnpm build` clean → simulator scenarios match predictions |
+
+## How to demo
+
+Three commands prove the three PRD headline goals (§7):
+
+```bash
+# G1: Sustain 10K signals/sec for 60s, p99 < 50ms.
+./scripts/load-test.sh
+# expect: ≥99% 2xx, p99 ≤ 50ms, queue depth never blocks
+
+# G2: Debounce collapses correlated signals 100x.
+go run ./scripts/simulate-outage.go --scenario cache
+# expect: 200 sent → 2 work_items → ratio 100.0×
+
+# G3: RCA enforcement is unbypassable.
+go test -tags=integration -race ./backend/internal/
+# expect: TestE2E_FullLifecycle PASS, including 422 on CLOSED without RCA
+```
+
+Then open the dashboard at [http://localhost:3000/dashboard](http://localhost:3000/dashboard) and click through:
+- Live feed with persona switcher
+- Click any incident → transition timeline, signal frequency histogram, payload fingerprints
+- [`/postmortem`](http://localhost:3000/postmortem) for the RCA queue
+- [`/incidents/closed`](http://localhost:3000/incidents/closed) for MTTR distribution + root-cause donut
 
 ## Decisions log
 
