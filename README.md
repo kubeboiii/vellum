@@ -4,7 +4,7 @@ A backend-heavy distributed system that ingests failure signals at **10K/sec**,
 debounces them into work items, runs them through a state-machine lifecycle
 with mandatory RCA on closure, and exposes a Next.js dashboard for triage.
 
-Built as a 7-day engineering assignment. Currently at **Phase 4 (Workflow Engine)** — State pattern, Strategy-pattern alerters, transactional state transitions, mandatory RCA on close.
+Built as a 7-day engineering assignment. Currently at **Phase 5 (gRPC + Frontend)** — full stack working: HTTP + gRPC ingestion → atomic debounce → polyglot fan-out → State-pattern workflow → Next.js triage dashboard.
 
 For the full picture, read in order:
 
@@ -254,8 +254,92 @@ curl -X POST -H 'Content-Type: application/json' http://localhost:8080/v1/incide
 ### What Phase 4 does *not* do
 
 No gRPC ingestion, no frontend. The new API endpoints exist for the
-Phase 5 dashboard to consume; the dashboard itself (Next.js pages,
-live polling, RCA form) ships in Phase 5.
+Phase 5 dashboard to consume; the dashboard itself ships in Phase 5.
+
+## Phase 5 acceptance (gRPC + Frontend)
+
+- [x] `backend/proto/ims/v1/signals.proto` defines bidi-stream
+      `SignalService.IngestSignals`. `buf generate` (local plugins)
+      produces `signals.pb.go` + `signals_grpc.pb.go`.
+- [x] gRPC server on `:9090` shares the same `pipeline.Pipeline` as
+      HTTP (FR-1.3 — "exactly one downstream path regardless of
+      protocol"). 4 bufconn-backed unit tests cover ACCEPTED, queue-full,
+      invalid signal, client-supplied UUID preservation.
+- [x] `GET /v1/incidents/:id/signals?page=&per_page=` paginates raw
+      signals from Mongo. UUIDs returned as canonical strings, not
+      BSON Binary.
+- [x] CORS middleware (~30 LOC, no extra dep) lets the dashboard
+      call the API from `localhost:3000` during dev.
+- [x] **SQLSTATE 40001 → 409 Conflict** mapping in the API error
+      helper. Concurrent processor + workflow tx don't surface as
+      scary 500s.
+- [x] Next.js 14 dashboard with three pages:
+      `/` live feed (2s client-side polling, FR-7.1),
+      `/incidents/[id]` detail with state-transition controls + raw
+      signals + RCA panel (FR-7.2, FR-7.4),
+      `/incidents/[id]/rca` RCA form with client-side validation
+      mirror (FR-7.3).
+- [x] `pnpm build` clean: 4 routes, ~98 KB First Load JS.
+- [x] `go test -race ./...` clean across **13 packages** (incl. 4 new
+      gRPC tests). `go vet`, `gofmt` clean.
+- [x] **End-to-end smoke:** 10 signals streamed via gRPC →
+      work_item created → PATCH OPEN→INVESTIGATING→RESOLVED via
+      REST → POST RCA returns 201 with `mttr_seconds` populated.
+      PagerDuty stub fires for the gRPC-originated P0.
+
+### Phase 5 env vars (added this phase)
+
+| Var | Default | Purpose |
+|---|---|---|
+| `IMS_GRPC_ADDR` | `:9090` | gRPC bind address |
+| `IMS_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed Origins |
+| `NEXT_PUBLIC_API_BASE` | `http://localhost:8080` | Frontend → backend URL (build-time, exposed to browser) |
+
+### Run the full system
+
+```bash
+# 1. Bring up the data stores + apply migrations.
+docker compose -f docker/compose.yaml up -d
+export DATABASE_URL="postgres://ims:ims@localhost:5432/ims?sslmode=disable"
+migrate -path backend/migrations -database "$DATABASE_URL" up
+
+# 2. Start the backend (HTTP :8080 + gRPC :9090).
+cd backend && go run ./cmd/ims
+
+# 3. In another terminal — start the dashboard.
+cd frontend && pnpm dev
+# -> open http://localhost:3000
+
+# 4. Optional — stream signals over gRPC to populate the dashboard.
+cd backend && go run -tags phase5demo ../scripts/grpc-client.go \
+  --target localhost:9090 --n 20 --component DEMO_GRPC
+```
+
+### Regenerating gRPC stubs
+
+After editing `backend/proto/ims/v1/signals.proto`:
+
+```bash
+cd backend
+PATH="$HOME/go/bin:$PATH" buf generate
+```
+
+Generated files are checked into git; reviewers don't need protoc
+installed unless they want to modify the .proto. Required tooling for
+that:
+
+```bash
+brew install bufbuild/buf/buf
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```
+
+### What Phase 5 does *not* do
+
+No failure-simulator script, no chaos tests, no WebSocket push.
+The cascading-failure scenario from PRD §7 G6 ships in Phase 6
+(`scripts/simulate-outage.go`), along with an integration test that
+exercises the entire stack against ephemeral containers.
 
 ## Decisions log
 

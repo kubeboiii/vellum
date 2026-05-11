@@ -69,6 +69,50 @@ func (r *WorkItemRepository) ListActive(ctx context.Context, limit int) ([]model
 	return out, nil
 }
 
+// ListClosed returns CLOSED Work Items sorted by closed_at DESC
+// (most recently closed first). Powers the Phase 5 /incidents/closed
+// history page — what the post-mortem author opens to find what they
+// just submitted an RCA for. Limited to `limit`, default 100.
+//
+// Unlike ListActive, this scan can touch every CLOSED row in the
+// table over time. We don't have a partial index on closed-status
+// yet; the default btree on (created_at) is fine while volumes are
+// small. If incident volume grows, add an index on (closed_at DESC)
+// WHERE status = 'CLOSED'.
+func (r *WorkItemRepository) ListClosed(ctx context.Context, limit int) ([]model.WorkItem, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	const q = `
+		SELECT id, component_id, component_type, severity, status,
+		       signal_count, first_signal_ts, last_signal_ts,
+		       mttr_seconds, incident_start, incident_end, closed_at,
+		       created_at, updated_at
+		  FROM work_items
+		 WHERE status = 'CLOSED'
+		 ORDER BY closed_at DESC NULLS LAST
+		 LIMIT $1
+	`
+	rows, err := r.pool.Query(ctx, q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list closed: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]model.WorkItem, 0, limit)
+	for rows.Next() {
+		wi, err := scanWorkItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, wi)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("pg: list closed rows: %w", err)
+	}
+	return out, nil
+}
+
 // rowScanner is the narrow interface pgx.Row and pgx.Rows both satisfy
 // for our purposes — lets scanWorkItem be shared between GetByID
 // (single row) and ListActive (iteration).

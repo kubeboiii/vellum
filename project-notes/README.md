@@ -23,7 +23,7 @@
 | 2 | [phase-2-ingestion-qa.md](phase-2-ingestion-qa.md) | Goroutines & channels, backpressure, rate limiting, worker pools, /health, vegeta load testing |
 | 3 | [phase-3-debounce-qa.md](phase-3-debounce-qa.md) | Redis Lua atomic ops, polyglot persistence fan-out, retry+backoff, dead-letter, hypertables, testcontainers |
 | 4 | [phase-4-workflow-qa.md](phase-4-workflow-qa.md) | State pattern, Strategy pattern, RCA validation, MTTR, SERIALIZABLE transactions, SELECT FOR UPDATE |
-| 5 | *(TBD)* | gRPC streaming, Next.js dashboard, SSR vs CSR |
+| 5 | [phase-5-grpc-frontend-qa.md](phase-5-grpc-frontend-qa.md) | gRPC bidi-streaming, protobuf, Next.js Server vs Client Components, CORS, SQLSTATE 40001 → 409 |
 | 6 | *(TBD)* | Failure simulation, chaos testing, resilience patterns |
 | 7 | *(TBD)* | Documentation, demo, polish |
 

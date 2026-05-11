@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/kubeboiii/ims/internal/model"
 )
@@ -71,6 +72,81 @@ func (r *SignalRepository) Insert(ctx context.Context, sig model.Signal, workIte
 // to prove "200 raw signals landed in Mongo".
 func (r *SignalRepository) CountByComponent(ctx context.Context, componentID string) (int64, error) {
 	return r.coll.CountDocuments(ctx, bson.M{"component_id": componentID})
+}
+
+// SignalPage is one page of signals returned by ListByWorkItem.
+// Total is the unpaginated count so the UI can render "Page 2 of 7".
+type SignalPage struct {
+	Items   []map[string]any `json:"items"`
+	Page    int              `json:"page"`
+	PerPage int              `json:"per_page"`
+	Total   int64            `json:"total"`
+}
+
+// ListByWorkItem returns one page of raw signals attached to a Work
+// Item, newest first (FR-7.2). Page is 1-indexed; perPage defaults to
+// 50 and is capped at 200 to keep response sizes bounded.
+//
+// Result rows are returned as map[string]any (not strict structs) so
+// the heterogeneous payload field round-trips back to the API
+// without us reflecting over every possible payload shape.
+func (r *SignalRepository) ListByWorkItem(ctx context.Context, workItemID uuid.UUID, page, perPage int) (SignalPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 50
+	}
+	if perPage > 200 {
+		perPage = 200
+	}
+	filter := bson.M{"work_item_id": workItemID}
+
+	total, err := r.coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return SignalPage{}, fmt.Errorf("mongo: count signals: %w", err)
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "timestamp", Value: -1}}).
+		SetSkip(int64((page - 1) * perPage)).
+		SetLimit(int64(perPage))
+
+	cursor, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return SignalPage{}, fmt.Errorf("mongo: find signals: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	items := make([]map[string]any, 0, perPage)
+	for cursor.Next(ctx) {
+		// Two-pass decode: first into a typed struct so the
+		// UUID fields come back as Go uuid.UUID (not bson.Binary),
+		// then into a map so the heterogeneous `payload` field
+		// round-trips intact. The two Decodes share the same
+		// cursor.Current bytes, so the cost is ~µs per row.
+		var typed struct {
+			SignalID   uuid.UUID `bson:"signal_id"`
+			WorkItemID uuid.UUID `bson:"work_item_id"`
+		}
+		if err := cursor.Decode(&typed); err != nil {
+			return SignalPage{}, fmt.Errorf("mongo: decode signal uuids: %w", err)
+		}
+		var doc map[string]any
+		if err := cursor.Decode(&doc); err != nil {
+			return SignalPage{}, fmt.Errorf("mongo: decode signal: %w", err)
+		}
+		delete(doc, "_id")
+		// Replace the bson.Binary representations with the canonical
+		// UUID string form the frontend expects.
+		doc["signal_id"] = typed.SignalID.String()
+		doc["work_item_id"] = typed.WorkItemID.String()
+		items = append(items, doc)
+	}
+	if err := cursor.Err(); err != nil {
+		return SignalPage{}, fmt.Errorf("mongo: cursor: %w", err)
+	}
+	return SignalPage{Items: items, Page: page, PerPage: perPage, Total: total}, nil
 }
 
 // EnsureIndexes creates the two indexes the detail page needs:

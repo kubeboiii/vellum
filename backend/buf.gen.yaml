@@ -1,0 +1,19 @@
+# buf code-generation config. Uses LOCAL plugins (protoc-gen-go +
+# protoc-gen-go-grpc installed in $GOPATH/bin) rather than buf.build
+# remote plugins — the remote service has had availability blips and
+# we don't want our build to depend on it for a 7-day demo.
+#
+# Generated Go lands at backend/proto/ims/v1/*.pb.go thanks to
+# paths=source_relative + the module's `proto:` directive in buf.yaml.
+
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: proto
+    opt:
+      - paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: proto
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=false
