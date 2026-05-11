@@ -602,3 +602,22 @@ TEMPLATE for new entries — copy and fill in:
 **Context:** PRD wants a sound alert when a new P0 lands.
 **Decision:** Synthesize a 880Hz square-wave beep via Web Audio API instead of bundling an audio asset.
 **Why:** No bundle cost, no autoplay-policy surprises (the user has just clicked "unmute"), no asset to choose / license.
+
+## 2026-05-11 — Phase 6: stress test isolates the across-window property
+**Context:** TestProcess_ConcurrentSameComponent (Phase 3) already tested single-window atomicity by bumping MaxSignals = N+1 so contention couldn't cross a window boundary.
+**Decision:** Added a separate TestProcess_StressManyWindows in backend/internal/debounce/stress_test.go that wires the production cap (100) and asserts: 300 concurrent goroutines → exactly 3 distinct work_items, exactly 3 CREATED actions.
+**Why:** A race in the Lua window-transition code would not show up in the single-window test. Now both properties have a dedicated test.
+**Impact:** Closes PRD risk R2 ("concurrency bugs hide in tests") for the cap-crossing case.
+
+## 2026-05-11 — Phase 6: integration test against the LIVE backend
+**Context:** A full lifecycle test (POST signal → debounce → state machine → RCA gate → CLOSED) needs the real four-store stack.
+**Decision:** Wrote backend/internal/e2e_integration_test.go behind the `integration` build tag, pointing at the running backend on :8080. Skipped testcontainers for the four-store setup because docker-compose already provides one consistent stack — testcontainers would have duplicated the wiring.
+**Why:** Build-tagged so default `go test ./...` stays fast; explicit `-tags=integration` for the slow path.
+**Alternatives considered:** Spinning up testcontainers for all four DBs inside the test — would have added ~20s setup per run and duplicated docker-compose's job.
+**Impact:** Headline assertion: 0.29s end-to-end including RCA-gate rejection. Passes deterministically.
+
+## 2026-05-11 — Phase 6: simulator script complements the /simulate UI
+**Context:** The /simulate page (Phase 5) is a click-and-watch demo. PRD §13 explicitly wanted a headless script too.
+**Decision:** scripts/simulate-outage.go provides the same three scenarios, runnable from a clean checkout with `go run`. Computes the debounce ratio per scenario and prints an aggregate. Tolerates 503s and 5xx — they're counted, not fatal.
+**Why:** Reviewers can demo the system without spinning up the frontend. The script also produces shareable terminal output for a recorded demo.
+**Impact:** Cache scenario hits 100× compression; aggregate 51× (RDBMS cascade and MCP fan-out drag the harmonic mean down, by design).
