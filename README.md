@@ -1,12 +1,59 @@
-# Vellum — Distributed Signal and Incident Response System
+<h1 align="center">Vellum</h1>
+<p align="center"><b>Distributed Signal and Incident Response System</b></p>
 
-> **Ingests failure signals at 10K/sec, debounces them into work items via atomic Redis Lua, runs them through a state-machine lifecycle with mandatory RCA on closure, and surfaces them through a Next.js triage dashboard.**
+<p align="center">
+  <a href="https://go.dev"><img alt="Go 1.22+" src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white"></a>
+  <a href="https://nextjs.org"><img alt="Next.js 14" src="https://img.shields.io/badge/Next.js-14-000000?logo=next.js&logoColor=white"></a>
+  <a href="https://grpc.io"><img alt="gRPC" src="https://img.shields.io/badge/gRPC-streaming-244c5a?logo=grpc&logoColor=white"></a>
+  <a href="https://www.postgresql.org"><img alt="PostgreSQL 16" src="https://img.shields.io/badge/Postgres-16-4169E1?logo=postgresql&logoColor=white"></a>
+  <a href="https://www.mongodb.com"><img alt="MongoDB 7" src="https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white"></a>
+  <a href="https://redis.io"><img alt="Redis 7" src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white"></a>
+  <a href="https://www.timescale.com"><img alt="TimescaleDB" src="https://img.shields.io/badge/Timescale-hypertables-FDB515?logo=timescale&logoColor=white"></a>
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
+</p>
 
-A backend-heavy distributed system demonstrating high-throughput ingestion with backpressure, atomic debounce, polyglot persistence (Postgres / Mongo / Redis / TimescaleDB), State + Strategy design patterns, and a polished operator UI.
+<p align="center">
+  Sustains <b>10,000 signals/sec</b> ingestion at <b>p99 &lt; 2ms</b>, collapses correlated failures <b>100× via atomic Redis Lua debounce</b>, and enforces post-mortem discipline through a state-machine workflow with a mandatory RCA gate. Polyglot persistence across four stores, two ingestion protocols (HTTP + gRPC), and a Next.js operator UI.
+</p>
+
+---
+
+## The problem
+
+Production systems do not fail quietly. A single Postgres hiccup cascades into thousands of error logs from every service that touches the database. In thirty seconds an SRE's pager can receive **5,000 alerts about one outage**.
+
+Observability tools (Datadog, New Relic, Grafana) excel at *displaying* this firehose. They do not aggregate it. The human on call is asked to do triage by reading.
+
+Vellum sits between raw signals and human responders. It turns 5,000 alerts about one outage into **one incident with 5,000 signals attached** — preserved for forensics, deduplicated for action, locked behind a state machine that cannot be marked closed without a structured post-mortem. Mean Time To Repair is computed automatically.
+
+## What Vellum does
+
+- **Ingests** signals at sustained 10K/sec over HTTP and gRPC-streaming, with token-bucket per-source rate limiting and bounded-channel backpressure that returns `503` in <5ms when overloaded.
+- **Debounces** correlated signals atomically: a single Redis Lua script collapses up to 100 signals per `component_id` per 10-second window into one work item — safe under contention across replicas.
+- **Persists** every raw signal to MongoDB for forensic audit, the aggregated work item to Postgres for transactional truth, and per-minute aggregates to TimescaleDB for the analytics dashboard. Failed writes retry with exponential backoff (3 attempts, base 100ms), then dead-letter to Mongo for human recovery.
+- **Tracks lifecycle** through a State-pattern workflow (`OPEN → INVESTIGATING → RESOLVED → CLOSED`) under `SERIALIZABLE` isolation. CLOSED is unreachable without a complete RCA — the gate is enforced in exactly one place in the codebase, not duplicated. MTTR is auto-computed on close and written in the same transaction.
+- **Alerts** through a Strategy-pattern registry: PagerDuty for P0, Slack webhooks for P1/P2, console for P3. Dispatch is async and isolated; a failing alerter cannot block ingestion.
+- **Surfaces** all of this through a Next.js 14 operator dashboard: live feed, transition-timeline scrubber, signal-frequency histograms, payload-fingerprint grouping, MTTR distribution, root-cause donut, persona-aware view switcher.
+
+## Benchmarks
+
+Measured on a 2026 MacBook Air M4 against the full Docker Compose stack.
+
+| Metric | Result | Source |
+|---|---|---|
+| Sustained ingestion throughput | **10,000 signals/sec for 60s** | `./scripts/load-test.sh` (vegeta) |
+| Total requests served, zero drops | **600,000 over 60s, 100% success** | same |
+| p99 ingestion latency | **1.89 ms** | same |
+| Debounce compression ratio | **100×** (200 signals → 2 work items) | `simulate-outage.go --scenario cache` |
+| Concurrency stress test | **300 goroutines × same component_id @ cap=100 → exactly 3 work items**, no races under `-race` | `internal/debounce/stress_test.go` |
+| End-to-end lifecycle | **0.29s**: POST → debounce → state transitions → RCA gate (422) → CLOSED + MTTR | `internal/e2e_integration_test.go` |
+| Frontend build | **11 routes prerendered**, 87 KB shared JS, zero TS errors | `pnpm build` |
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    src["Observability<br/>agents"] -- "HTTP / gRPC<br/>10k/s" --> ingest["Ingest<br/>(bounded channel<br/>+ rate limit)"]
+    src["Observability<br/>agents"] -- "HTTP / gRPC<br/>10K sig/s" --> ingest["Ingest<br/>(bounded channel<br/>+ rate limit)"]
     ingest --> debounce["Debouncer<br/>(Redis Lua<br/>atomic)"]
     debounce --> wf["Workflow<br/>(State pattern<br/>+ RCA gate)"]
     wf --> stores[("<b>Postgres + Mongo<br/>+ Redis + Timescale</b>")]
@@ -19,471 +66,185 @@ flowchart LR
     class stores store
 ```
 
-For the full picture, read in order:
+Six invariants are load-bearing across the codebase:
 
-1. [`docs/00-master-prd.md`](docs/00-master-prd.md) — what and why
-2. [`docs/01-architecture.md`](docs/01-architecture.md) — how it's built (with detailed diagrams)
-3. [`docs/decisions.md`](docs/decisions.md) — every non-obvious choice, with rationale
-4. [`docs/prompts.md`](docs/prompts.md) — per-phase narrative of what was asked of Claude
+1. **Ingestion never blocks on persistence.** Handler does a non-blocking `select { case ch <- sig: default: }` onto a `chan Signal` of capacity 50,000 and returns `202` (or `503` when full) in milliseconds. No request goroutine ever waits on a database — backpressure propagates back to the caller as `Retry-After: 1`.
+2. **State transitions are transactional.** Every state change is `BEGIN → SELECT FOR UPDATE → CanTransitionTo() → UPDATE → INSERT audit → COMMIT` under `SERIALIZABLE` isolation. `pgx` `SQLSTATE 40001` maps to a retryable `409`.
+3. **RCA is required for CLOSED.** `ResolvedState.CanTransitionTo(ClosedState, ctx)` is the only place the gate exists. Bypassing it is impossible by construction. MTTR is written in the same transaction.
+4. **Debounce is atomic via Lua.** `GET window → INCR count → SET` runs as one Redis script execution, loaded at startup via `SCRIPT LOAD`. Multi-replica safe; verified under 300-goroutine `-race` contention.
+5. **Persistence retries, then dead-letters.** Every sink write is wrapped in `cenkalti/backoff` (3 attempts, base 100ms, 2× multiplier). Final failures land in a Mongo `dead_letter` collection with the original payload and the sink that failed — recoverable later, never silently dropped.
+6. **Concurrency primitives are explicit.** Goroutines + channels for the pipeline, `sync.RWMutex` for the per-source rate-limiter map, `atomic.Int64` for lock-free counters, `errgroup.Group` for the parallel persistence fan-out, `context.Context` on every I/O path. CI runs `go test -race` on every commit.
 
----
+Full topology + design-pattern catalog in [`docs/01-architecture.md`](docs/01-architecture.md). 30+ ADR-style decision entries in [`docs/decisions.md`](docs/decisions.md).
 
-## Quick start
+## Observability
 
-### Prerequisites
+- **`GET /health`** — returns each dependency's status (`up` / `degraded` / `down`) with latency in ms, plus ingestion queue depth and capacity.
+- **5-second metrics ticker** on the backend writes a structured line to stdout: `[metrics] accepted=8421/s processed=8398/s queue=312/50000 errors=0.00/s`.
+- **Dashboard mirrors both live.** A dependency strip at the top of every page polls `/health` every 5s; the bottom of the live feed renders the metrics ticker in a terminal-styled frame.
 
-| Tool | Why | Install (macOS) |
+## API surface
+
+### HTTP
+
+| Method | Path | Purpose |
 |---|---|---|
-| **Docker** (with Compose v2) | runs Postgres, Mongo, Redis | [docker.com](https://docs.docker.com/get-docker/) or `brew install --cask docker` |
-| **Go 1.22+** | builds + runs the backend | `brew install go` |
-| **Node 20+** + **pnpm** | builds + runs the frontend | `brew install node` then `corepack enable` |
-| **golang-migrate** | applies SQL migrations | `brew install golang-migrate` |
+| `POST` | `/v1/signals` | Ingest a single signal — `202` accepted / `503` queue full |
+| `GET` | `/v1/incidents` | Active (non-CLOSED) incidents, sorted by severity then last-signal time |
+| `GET` | `/v1/incidents/closed` | Closed history with MTTR |
+| `GET` | `/v1/incidents/:id` | Incident detail + RCA (if closed) |
+| `GET` | `/v1/incidents/:id/signals` | Paginated raw signals from Mongo |
+| `GET` | `/v1/incidents/:id/transitions` | State-transition audit log |
+| `PATCH` | `/v1/incidents/:id/state` | Advance the state machine |
+| `POST` | `/v1/incidents/:id/rca` | Submit RCA → automatic CLOSE + MTTR computation |
+| `GET` | `/health` | Dependency status + queue depth |
 
-### 1. Clone and configure
+### gRPC
+
+`SignalService.IngestSignals` — bidi-streaming. Client streams `Signal` messages; server streams `Ack` (`ACCEPTED` / `REJECTED_QUEUE_FULL` / `REJECTED_INVALID`). Shares the same downstream pipeline as HTTP.
+
+## Tech stack — and why
+
+| Layer | Choice | Why this and not something else |
+|---|---|---|
+| **Backend language** | Go 1.22+ | Goroutines and channels map cleanly to the ingestion model. Static binary, fast cold start, race detector in the test runner. |
+| **HTTP framework** | Gin | Lightweight, ergonomic middleware composition, low allocation in the hot path. Hardened with `SetTrustedProxies(nil)`, `MaxBytesReader`, and full HTTP-server timeouts. |
+| **RPC** | gRPC + protobuf | Strongly-typed contract for high-volume internal producers. Server-streaming endpoint shares the HTTP pipeline downstream. |
+| **Source-of-truth store** | PostgreSQL 16 | Work items have foreign keys to RCAs and transitions. `SERIALIZABLE` prevents split-brain transitions. |
+| **Audit log store** | MongoDB 7 | Signal payloads are heterogeneous JSON; Mongo is purpose-built for append-only, schema-flexible, secondary-indexed writes at volume. |
+| **Cache + debounce state** | Redis 7 | (a) Atomic Lua scripts — the single primitive that makes correct cross-replica debounce possible. (b) Dashboard hot-path: sorted set keyed by `(severity, last_signal_ts)` gives O(log n) reads, avoiding a Postgres round-trip on every 2s poll. |
+| **Timeseries** | TimescaleDB (Postgres extension) | Hypertables auto-partition by time for per-minute rollups. One less container than running Prometheus. |
+| **Postgres driver** | `pgx` v5 | Native protocol, built-in pooling, structured-error access for SQLSTATE-based retry logic. Not `database/sql`. |
+| **Frontend** | Next.js 14 (App Router) + Tailwind + hand-rolled components | Server Components for static pages, Client Components for the polling dashboard. Owned design system per a checked-in `THEME.md`. |
+| **Orchestration** | Docker Compose | Single command brings the whole stack up. Pinned image digests. |
+| **Load test** | vegeta | Scriptable, clean reports, scales past 10K rps from one host. |
+
+## Prerequisites
+
+| Tool | Version | Install (macOS) |
+|---|---|---|
+| Docker (with Compose v2) | latest | `brew install --cask docker` |
+| Go | 1.22+ | `brew install go` |
+| Node + pnpm | Node 20+, pnpm via corepack | `brew install node && corepack enable` |
+| golang-migrate | latest | `brew install golang-migrate` |
+
+Linux: install via your package manager, [go.dev/dl](https://go.dev/dl/), [nodesource](https://github.com/nodesource/distributions), and the [migrate releases page](https://github.com/golang-migrate/migrate/releases).
+
+## Getting started
 
 ```bash
+# 1. Clone + configure
 git clone https://github.com/kubeboiii/vellum.git
 cd vellum
-cp .env.example .env        # defaults match the docker-compose stack
-```
+cp .env.example .env
 
-### 2. Bring up the four data stores
-
-```bash
+# 2. Start Postgres, MongoDB, Redis (all bound to 127.0.0.1)
 docker compose -f docker/compose.yaml up -d
-docker compose -f docker/compose.yaml ps       # wait until all four show "healthy" (~10s)
-```
+docker compose -f docker/compose.yaml ps       # wait until all three show (healthy)
 
-This starts Postgres (with TimescaleDB extension), MongoDB, and Redis on `127.0.0.1` only — they are **not** exposed to your LAN. Default credentials `vellum:vellum` are documented for local dev only.
-
-### 3. Apply database migrations
-
-```bash
+# 3. Apply schema migrations
 export DATABASE_URL="postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable"
 migrate -path backend/migrations -database "$DATABASE_URL" up
+
+# 4. Run the backend (HTTP :8080, gRPC :9090)
+cd backend && go run ./cmd/vellum
 ```
 
-Creates the `work_items`, `state_transitions`, `rca`, and `signal_metrics` (Timescale hypertable) tables.
-
-### 4. Start the backend (HTTP `:8080` + gRPC `:9090`)
-
-In its own terminal:
+Verify and send a signal:
 
 ```bash
-cd backend
-go run ./cmd/vellum
-```
-
-Verify it came up:
-
-```bash
-curl http://localhost:8080/health
-# → {"status":"healthy","dependencies":{"mongo":{"status":"up",...},...}}
-```
-
-Send a test signal:
-
-```bash
-curl -X POST http://localhost:8080/v1/signals \
+curl -s http://localhost:8080/health | jq
+curl -sX POST http://localhost:8080/v1/signals \
   -H 'Content-Type: application/json' \
-  -d '{
-    "component_id":"RDBMS_PRIMARY_01",
-    "component_type":"RDBMS",
-    "severity":"P0",
-    "source":"datadog",
-    "payload":{"err":"connection refused"}
-  }'
+  -d '{"component_id":"RDBMS_PRIMARY_01","component_type":"RDBMS","severity":"P0","source":"datadog","payload":{"err":"connection refused"}}'
 # → 202 {"signal_id":"...","status":"accepted"}
 ```
 
-That signal flows: HTTP handler → bounded channel → worker pool → Redis Lua debouncer → MongoDB (raw audit) + Postgres (work_item) + TimescaleDB (timeseries) → alerter Strategy.
-
-### 5. Start the frontend (`:3000`)
-
-In a second terminal:
+In a second terminal, start the frontend at [localhost:3000](http://localhost:3000):
 
 ```bash
 cd frontend
-pnpm install                 # first time only
-pnpm dev                     # or `pnpm build && pnpm start` for production mode
+pnpm install                                   # first time only
+pnpm dev                                       # or `pnpm build && pnpm start`
 ```
 
-Open [http://localhost:3000](http://localhost:3000) for the landing page, or [http://localhost:3000/dashboard](http://localhost:3000/dashboard) to jump straight into the live feed.
+### 60-second demo
 
-### 6. Generate some realistic load
+Open [`/dashboard`](http://localhost:3000/dashboard) and in a terminal run:
 
 ```bash
-go run ./scripts/simulate-outage.go --scenario all
+go run ./scripts/simulate-outage.go --scenario all     # ~460 signals over ~15s → ~9 incidents
+./scripts/load-test.sh                                 # sustained 10K/sec for 60s (needs `brew install vegeta`)
 ```
 
-Three pre-canned outage scenarios fire ~460 signals at the backend over ~15 seconds. The dashboard's live feed updates within 2s as the debouncer collapses them into ~9 work items.
+The live feed updates within 2 seconds. Click any incident for its transition timeline, signal-frequency histogram, payload-fingerprint groups. Submit an RCA to watch the incident close with computed MTTR; view it on [`/incidents/closed`](http://localhost:3000/incidents/closed) inside the MTTR distribution chart.
 
-For sustained load testing:
+Tear down with `docker compose -f docker/compose.yaml down -v`.
 
-```bash
-./scripts/load-test.sh        # vegeta @ 10K signals/sec for 60s; needs `brew install vegeta`
-```
-
-### Tear down
-
-```bash
-docker compose -f docker/compose.yaml down        # keep volumes (data persists)
-docker compose -f docker/compose.yaml down -v     # nuke volumes (clean slate)
-```
-
-## Repo layout
-
-See `01-architecture.md` §10. High-level:
+## Repository layout
 
 ```
-backend/   Go service (cmd/vellum, internal/{ingest,pipeline,debounce,workflow,...})
-frontend/  Next.js 14 dashboard (App Router, Tailwind, shadcn/ui)
-docker/    compose.yaml + init.sql for the Postgres+Timescale container
-docs/      PRD, architecture, phase files, decisions log
-scripts/   Load test, failure simulator (Phase 2+)
+vellum/
+├── backend/
+│   ├── cmd/vellum/                    # main entrypoint; wires the pipeline
+│   ├── internal/
+│   │   ├── ingest/                    # HTTP handler + gRPC streaming + rate limit
+│   │   ├── pipeline/                  # bounded channel + worker pool
+│   │   ├── debounce/                  # Lua script + atomic wrapper
+│   │   ├── workflow/                  # State pattern; transactional transitions
+│   │   ├── alert/                     # Strategy registry; PagerDuty / Slack / Console
+│   │   ├── persist/{pg,mongo,redis,timescale}/
+│   │   ├── api/                       # Gin routes for the dashboard
+│   │   ├── model/                     # pure types: Signal, WorkItem, RCA, State (+ unit tests)
+│   │   ├── obs/                       # /health, 5s metrics ticker
+│   │   └── processor/                 # consumes the channel; orchestrates fan-out + retry
+│   ├── proto/vellum/v1/               # protobuf + generated stubs
+│   └── migrations/                    # forward-only SQL migrations
+├── frontend/                          # Next.js 14 dashboard + landing + demo pages
+├── docker/compose.yaml                # Postgres + Mongo + Redis, 127.0.0.1-bound
+├── scripts/
+│   ├── simulate-outage.go             # headless failure simulator (3 scenarios)
+│   ├── load-test.sh                   # vegeta 10K/sec load test
+│   └── grpc-client.go                 # demo gRPC streaming client
+└── docs/
+    ├── 00-master-prd.md               # requirements
+    ├── 01-architecture.md             # topology + design patterns + failure modes
+    ├── decisions.md                   # 30+ ADRs
+    └── prompts.md                     # AI-assisted process narrative
 ```
 
-## Tech stack
+## Operator UI
 
-| Layer | Choice | Pinned version |
-|---|---|---|
-| Backend | Go + Gin + gRPC | `go.mod` |
-| HTTP framework | Gin | latest at scaffold |
-| RDBMS | PostgreSQL + TimescaleDB | `timescale/timescaledb:2.17.2-pg16` |
-| Document store | MongoDB | `mongo:7.0.14` |
-| Cache | Redis | `redis:7.4.1-alpine` |
-| Frontend | Next.js 14 (App Router) | `next@14.2.35` |
-| Styling | Tailwind 3 + shadcn/ui | scaffold |
-| Orchestration | Docker Compose | v2 |
-
-Image tags are pinned to keep `docker compose up` reproducible on a fresh
-clone (R5 in 00-master-prd §10.1). **Do not bump versions without an entry
-in `docs/decisions.md`.**
-
-## Phase 1 acceptance (Foundation)
-
-- [x] `docker compose -f docker/compose.yaml up` brings Postgres (with the
-      TimescaleDB extension loaded), MongoDB, and Redis to a `healthy` state.
-- [x] `cd backend && go run ./cmd/vellum` starts a Gin server on `:8080`.
-- [x] `curl http://localhost:8080/health` returns `200 OK`.
-- [x] `cd frontend && pnpm build` succeeds.
-- [x] `cd backend && go test -race ./...` passes.
-- [x] All four logical data stores (Postgres, TimescaleDB, MongoDB, Redis)
-      are reachable on the published ports.
-
-> **Note on "4 databases":** Postgres and TimescaleDB live in the same
-> container (TimescaleDB is a Postgres extension — see 01-architecture §3.2
-> and §12). That's a deliberate choice to reduce ops surface and is the
-> standard deployment pattern.
-
-## Phase 2 acceptance (Ingestion & Backpressure)
-
-- [x] `POST /v1/signals` accepts a single JSON signal and returns 202
-      with `{"signal_id":"...","status":"accepted"}`.
-- [x] Returns 400 on validation failure, 429 on rate limit, 503 when the
-      queue is full (with `Retry-After: 1` header).
-- [x] Bounded `chan model.Signal` (default capacity 50,000) feeds a worker
-      pool (default `runtime.NumCPU() * 2`).
-- [x] Per-source token-bucket rate limiter (`golang.org/x/time/rate`),
-      default 1000 req/s with burst 2000 (FR-1.6).
-- [x] `/health` returns 200 with queue depth, capacity, and atomic
-      counters; flips to 503 when the queue is >95% full.
-- [x] Stdout metrics line every 5s: `[metrics] accepted=X/s processed=Y/s
-      queue=D/C errors=E/s total_accepted=… total_dropped=…`.
-- [x] Graceful shutdown on SIGINT/SIGTERM: HTTP listener stops first,
-      then the pipeline drains within `VELLUM_SHUTDOWN_TIMEOUT` (default 30s).
-- [x] **Load test:** `./scripts/load-test.sh` reports 10,000 req/s sustained
-      for 60s, 100% success, p99 = 1.89 ms (target ≤ 50 ms), 0 dropped.
-
-### Phase 2 config (env vars, with defaults)
-
-| Var | Default | Purpose |
-|---|---|---|
-| `VELLUM_HTTP_ADDR` | `:8080` | bind address |
-| `VELLUM_QUEUE_CAPACITY` | `50000` | bounded-channel depth (~5s of nominal at 10K/s) |
-| `VELLUM_WORKER_COUNT` | `NumCPU()*2` | consumer goroutines |
-| `VELLUM_RATE_LIMIT_RPS` | `1000` | per-source token refill rate (FR-1.6) |
-| `VELLUM_RATE_LIMIT_BURST` | `2000` | per-source burst tolerance |
-| `VELLUM_METRICS_INTERVAL` | `5s` | stdout metrics cadence (FR-8.2) |
-| `VELLUM_SHUTDOWN_TIMEOUT` | `30s` | drain deadline (NFR-2.4) |
-
-### Running the load test yourself
-
-```bash
-# Terminal 1 — boot the backend with rate limit lifted for single-host benchmark
-cd backend && VELLUM_RATE_LIMIT_RPS=20000 VELLUM_RATE_LIMIT_BURST=40000 go run ./cmd/vellum
-
-# Terminal 2 — run vegeta
-./scripts/load-test.sh   # RATE=10000 DURATION=60s
-```
-
-The script writes vegeta artifacts to `.loadtest/` (gitignored).
-
-## Phase 3 acceptance (Debounce & Persistence Fan-out)
-
-- [x] SQL migrations create `work_items`, `state_transitions`, and the
-      TimescaleDB `signal_metrics` hypertable. `down` then `up` is idempotent.
-- [x] Per signal, the processor:
-      (1) atomically debounces via the Redis Lua script
-      (`backend/internal/debounce/script.lua`, loaded with `SCRIPT LOAD`),
-      (2) writes the raw signal to Mongo (always — FR-3.4),
-      (3) inserts a new `work_items` row OR bumps `signal_count` on an
-      existing one in Postgres,
-      (4) inserts a metric row into the Timescale hypertable.
-- [x] Every sink write is retry-with-backoff (3 attempts, 100ms × 2). On
-      exhaustion, the payload + error lands in the Mongo `dead_letter`
-      collection (not auto-replayed in v1).
-- [x] **Redis-down** → `/health` flips to `degraded` (status 200 because
-      Redis is non-critical), debounce falls back to "always CREATED"
-      (FR-3.6). On Redis restart, `*redis.Script.Run` auto-reloads the
-      script on the first `NOSCRIPT` and debouncing resumes.
-- [x] **Postgres-down** → work_item writes dead-letter after 3 retries;
-      Mongo audit still receives the raw signals; backend keeps running.
-- [x] `/health` pings every dep with a 500ms timeout and includes per-dep
-      `{status, latency_ms}` in the response.
-- [x] **Acceptance demo:** `./scripts/simulate-component-storm.sh` fires
-      200 signals at one component over 8 seconds and verifies:
-      ~200 raw signals in Mongo, 1–3 work_items in Postgres,
-      200 rows in Timescale, **reduction ratio ≥ 60×**.
-      Result: 2 work_items, **100× reduction**, 0 errors.
-
-### Phase 3 env vars (added this phase)
-
-| Var | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | `postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable` | pgx pool DSN |
-| `MONGO_URI` | `mongodb://vellum:vellum@localhost:27017/vellum?authSource=admin` | mongo client URI |
-| `MONGO_DATABASE` | `vellum` | mongo logical database |
-| `REDIS_ADDR` | `localhost:6379` | redis address |
-| `VELLUM_DEBOUNCE_WINDOW_SECONDS` | `10` | FR-3.1 |
-| `VELLUM_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
-| `VELLUM_DEP_PING_TIMEOUT` | `500ms` | per-dep /health budget |
-
-## Phase 4 acceptance (Workflow Engine)
-
-- [x] Migration 004 creates the `rca` table with DB-level CHECK
-      constraints mirroring app-level `RCA.Validate()`.
-- [x] State pattern in `internal/workflow`: `OpenState`,
-      `InvestigatingState`, `ResolvedState`, `ClosedState`, each
-      implementing `State` with `Name`, `CanTransitionTo`, `OnEnter`.
-- [x] `ResolvedState.CanTransitionTo(ClosedState)` is the **single**
-      enforcement point for "RCA required to close" (CLAUDE.md rule 3).
-- [x] `ClosedState.OnEnter` computes MTTR and stamps it on the WI.
-- [x] Transitions run in a SERIALIZABLE pgx tx with
-      `SELECT FOR UPDATE` (CLAUDE.md rule 2 + FR-4.4).
-- [x] Strategy pattern in `internal/alert`: `PagerDutyStub` (P0,
-      logs structured JSON), `SlackAlerter` (P1/P2, HTTP POST if
-      `SLACK_WEBHOOK_URL` set, else console), `ConsoleAlerter` (P3 +
-      fallback). One-file adds a new alerter.
-- [x] Alert dispatch on CREATED is async (`go alerter.Dispatch(...)`),
-      5s timeout, errors logged not dead-lettered (FR-6.4).
-- [x] HTTP endpoints (`internal/api`):
-      `GET /v1/incidents`, `GET /v1/incidents/:id`,
-      `PATCH /v1/incidents/:id/state`,
-      `POST /v1/incidents/:id/rca` (compound RCA-insert + close in
-      one tx).
-- [x] `go test -race ./...` clean across **12 packages**, including
-      `TestEngine_ConcurrentClose_ExactlyOneWins` (2 goroutines try to
-      close the same WI; exactly one succeeds).
-- [x] **PRD G3 end-to-end** (PATCH to CLOSED with no RCA → 422; with
-      short RCA → 422 with field details; with complete RCA → 201
-      with `mttr_seconds` populated). Verified via curl against a
-      live stack.
-
-### Phase 4 env vars (added this phase)
-
-| Var | Default | Purpose |
-|---|---|---|
-| `SLACK_WEBHOOK_URL` | (empty) | If set, P1/P2 alerts HTTP POST here. Else Console. |
-| `VELLUM_ALERTER_TIMEOUT` | `5s` | Per-dispatch timeout (FR-6.4). |
-
-### Try the PRD G3 scenario yourself
-
-```bash
-# Boot the stack + run migrations + start the backend (Phase 3 steps).
-
-# 1. Fire a signal to create a P0 incident (PagerDuty stub fires).
-curl -X POST -H 'Content-Type: application/json' http://localhost:8080/v1/signals \
-  -d '{"component_id":"DEMO_1","component_type":"CACHE","severity":"P0","source":"manual","payload":{}}'
-
-# 2. List active incidents and grab the ID.
-curl http://localhost:8080/v1/incidents | jq '.items[0].id'
-
-# 3. Advance through the lifecycle.
-WI_ID=<paste-id>
-curl -X PATCH -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/state \
-  -d '{"to":"INVESTIGATING"}'
-curl -X PATCH -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/state \
-  -d '{"to":"RESOLVED"}'
-
-# 4. Try to close without RCA → 422.
-curl -X PATCH -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/state \
-  -d '{"to":"CLOSED"}'
-
-# 5. Submit a complete RCA → 201 with MTTR.
-curl -X POST -H 'Content-Type: application/json' http://localhost:8080/v1/incidents/$WI_ID/rca \
-  -d '{
-    "root_cause_category":"INFRASTRUCTURE",
-    "fix_applied":"Rebooted the cache cluster and bumped pool size.",
-    "prevention_steps":"Add a synthetic monitor for pool saturation.",
-    "submitted_by":"sre@example.com"
-  }'
-```
-
-### What Phase 4 does *not* do
-
-No gRPC ingestion, no frontend. The new API endpoints exist for the
-Phase 5 dashboard to consume; the dashboard itself ships in Phase 5.
-
-## Phase 5 acceptance (gRPC + Frontend)
-
-- [x] `backend/proto/vellum/v1/signals.proto` defines bidi-stream
-      `SignalService.IngestSignals`. `buf generate` (local plugins)
-      produces `signals.pb.go` + `signals_grpc.pb.go`.
-- [x] gRPC server on `:9090` shares the same `pipeline.Pipeline` as
-      HTTP (FR-1.3 — "exactly one downstream path regardless of
-      protocol"). 4 bufconn-backed unit tests cover ACCEPTED, queue-full,
-      invalid signal, client-supplied UUID preservation.
-- [x] `GET /v1/incidents/:id/signals?page=&per_page=` paginates raw
-      signals from Mongo. UUIDs returned as canonical strings, not
-      BSON Binary.
-- [x] CORS middleware (~30 LOC, no extra dep) lets the dashboard
-      call the API from `localhost:3000` during dev.
-- [x] **SQLSTATE 40001 → 409 Conflict** mapping in the API error
-      helper. Concurrent processor + workflow tx don't surface as
-      scary 500s.
-- [x] Next.js 14 dashboard with three pages:
-      `/` live feed (2s client-side polling, FR-7.1),
-      `/incidents/[id]` detail with state-transition controls + raw
-      signals + RCA panel (FR-7.2, FR-7.4),
-      `/incidents/[id]/rca` RCA form with client-side validation
-      mirror (FR-7.3).
-- [x] `pnpm build` clean: 4 routes, ~98 KB First Load JS.
-- [x] `go test -race ./...` clean across **13 packages** (incl. 4 new
-      gRPC tests). `go vet`, `gofmt` clean.
-- [x] **End-to-end smoke:** 10 signals streamed via gRPC →
-      work_item created → PATCH OPEN→INVESTIGATING→RESOLVED via
-      REST → POST RCA returns 201 with `mttr_seconds` populated.
-      PagerDuty stub fires for the gRPC-originated P0.
-
-### Phase 5 env vars (added this phase)
-
-| Var | Default | Purpose |
-|---|---|---|
-| `VELLUM_GRPC_ADDR` | `:9090` | gRPC bind address |
-| `VELLUM_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed Origins |
-| `NEXT_PUBLIC_API_BASE` | `http://localhost:8080` | Frontend → backend URL (build-time, exposed to browser) |
-
-### Run the full system
-
-```bash
-# 1. Bring up the data stores + apply migrations.
-docker compose -f docker/compose.yaml up -d
-export DATABASE_URL="postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable"
-migrate -path backend/migrations -database "$DATABASE_URL" up
-
-# 2. Start the backend (HTTP :8080 + gRPC :9090).
-cd backend && go run ./cmd/vellum
-
-# 3. In another terminal — start the dashboard.
-cd frontend && pnpm dev
-# -> open http://localhost:3000
-
-# 4. Optional — stream signals over gRPC to populate the dashboard.
-cd backend && go run -tags phase5demo ../scripts/grpc-client.go \
-  --target localhost:9090 --n 20 --component DEMO_GRPC
-```
-
-### Regenerating gRPC stubs
-
-After editing `backend/proto/vellum/v1/signals.proto`:
-
-```bash
-cd backend
-PATH="$HOME/go/bin:$PATH" buf generate
-```
-
-Generated files are checked into git; reviewers don't need protoc
-installed unless they want to modify the .proto. Required tooling for
-that:
-
-```bash
-brew install bufbuild/buf/buf
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-```
-
-### What Phase 5 does *not* do
-
-No failure-simulator script, no chaos tests, no WebSocket push.
-The cascading-failure scenario from PRD §7 G6 ships in Phase 6
-(`scripts/simulate-outage.go`), along with an integration test that
-exercises the entire stack against ephemeral containers.
-
-## Phase 6 acceptance (Resilience & Simulation)
-
-| Deliverable | Where | Verification |
-|---|---|---|
-| **Concurrency stress test** | [`backend/internal/debounce/stress_test.go`](backend/internal/debounce/stress_test.go) | 300 goroutines × same `component_id` at the production cap (100) → exactly `ceil(300/100)=3` distinct work_items, 3 CREATED actions. Passes under `-race`. |
-| **Boundary-arithmetic test** | same file | Sequential 101 signals → first 100 JOIN, 101st CREATEs. Deterministic. |
-| **E2E integration test** | [`backend/internal/e2e_integration_test.go`](backend/internal/e2e_integration_test.go) | Behind the `integration` build tag; exercises POST signal → debounce → state machine → RCA gate (422) → CLOSED + MTTR computed → transitions audit. Runs in 0.29s. |
-| **Headless failure simulator** | [`scripts/simulate-outage.go`](scripts/simulate-outage.go) | Three scenarios (rdbms / cache / mcp) producing exact debounce ratios per scenario. |
-
-### Try the PRD G2 scenario yourself
-
-```bash
-# Cache thrash: 200 P2 signals to one component, debouncer must collapse to 2.
-go run ./scripts/simulate-outage.go --scenario cache
-#  → 200 sent, 200 accepted, 2 work_items created, ratio 100.0×
-#  → ✓ debounce held exactly as predicted
-```
-
-```bash
-# Run the integration suite against the live backend on :8080.
-go test -tags=integration -race ./backend/internal/
-#  → PASS: TestE2E_FullLifecycle (0.29s)
-```
-
-### What Phase 6 does *not* do
-
-No new endpoints. No schema changes. Just stress + simulation.
-
-## Phase 7 acceptance (Documentation & Polish)
-
-The final pass. No new code, just making everything reviewable.
-
-| Deliverable | Where |
+| Route | Purpose |
 |---|---|
-| Final README (this file) | top-level Mermaid pitch + all 7 phase sections + how-to-demo |
-| Mermaid architecture diagrams | [`docs/01-architecture.md`](docs/01-architecture.md) §2, §3; one inlined here |
-| `docs/prompts.md` | [`docs/prompts.md`](docs/prompts.md) — per-phase narrative of what Claude was asked, what worked, what I pushed back on |
-| `decisions.md` final entries | [`docs/decisions.md`](docs/decisions.md) — 27 entries spanning Phases 1–7 |
-| Dry-run from fresh clone | verified: `docker compose up` → backend healthy → `go test -race ./...` clean → `pnpm build` clean → simulator scenarios match predictions |
+| `/` | Landing page |
+| `/dashboard` | Live feed, severity mix, noisiest components, persona switcher, health strip |
+| `/incidents/[id]` | Detail: transition timeline, time-in-each-state, frequency histogram, fingerprints, raw signals |
+| `/incidents/[id]/rca` | RCA submission with client + server validation |
+| `/incidents/closed` | History: MTTR distribution, root-cause donut, repeat-offenders, MTTR trend |
+| `/postmortem` | RESOLVED queue waiting for RCAs + quality stats |
+| `/simulate` · `/load-test` | Click-to-run failure scenarios + in-browser burst tester |
 
-## How to demo
-
-Three commands prove the three PRD headline goals (§7):
+## Testing
 
 ```bash
-# G1: Sustain 10K signals/sec for 60s, p99 < 50ms.
-./scripts/load-test.sh
-# expect: ≥99% 2xx, p99 ≤ 50ms, queue depth never blocks
-
-# G2: Debounce collapses correlated signals 100x.
-go run ./scripts/simulate-outage.go --scenario cache
-# expect: 200 sent → 2 work_items → ratio 100.0×
-
-# G3: RCA enforcement is unbypassable.
-go test -tags=integration -race ./backend/internal/
-# expect: TestE2E_FullLifecycle PASS, including 422 on CLOSED without RCA
+cd backend && go test -race ./...                            # all unit + concurrency tests
+go test -tags=integration -race ./internal/                  # E2E lifecycle (backend on :8080)
+cd frontend && pnpm build                                    # TS check + prerender
+govulncheck -mode=source ./...                               # zero findings as of latest commit
 ```
 
-Then open the dashboard at [http://localhost:3000/dashboard](http://localhost:3000/dashboard) and click through:
-- Live feed with persona switcher
-- Click any incident → transition timeline, signal frequency histogram, payload fingerprints
-- [`/postmortem`](http://localhost:3000/postmortem) for the RCA queue
-- [`/incidents/closed`](http://localhost:3000/incidents/closed) for MTTR distribution + root-cause donut
+RCA validation has dedicated unit tests in `internal/model/rca_test.go`; the workflow's RCA gate has a dedicated integration test asserting `RESOLVED → CLOSED` returns `422` without a complete RCA body.
 
-## Decisions log
+## Security posture
 
-Non-obvious choices are recorded in [`docs/decisions.md`](docs/decisions.md).
+Default credentials (`vellum:vellum`) and plaintext HTTP are intentional for local dev; DB ports bind to `127.0.0.1` only. The system is hardened against trivial attacks (`http.MaxBytesReader`, `SetTrustedProxies(nil)`, full HTTP server timeouts, `govulncheck`-clean dependencies). No secrets in repo or git history — verified via full-history pattern scan.
+
+## Conscious non-goals
+
+No authentication (schema is auth-ready: `actor` and `submitted_by` wait for verified identity). No multi-tenancy. No real PagerDuty/Datadog integration — the Strategy pattern + stubs prove the contract; swapping a stub for a real HTTP client is a one-file change. No Kubernetes; Docker Compose is the unit of deployment. No ML correlation; debounce is rule-based on `(component_id, time, count)`. Every omission is recorded with rationale in [`docs/decisions.md`](docs/decisions.md).
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
+
