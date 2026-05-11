@@ -8,7 +8,7 @@
 
 ## 1. Document Purpose & How to Use It
 
-This is the master Product Requirements Document for an Incident Management System (IMS) — a backend-heavy distributed system that ingests failure signals from a heterogeneous tech stack, deduplicates and tracks them as work items through a state-machine lifecycle, and exposes a workflow dashboard for human responders. The deliverable is a complete, runnable, containerized application built in seven days as part of an engineering assignment intended to demonstrate concurrency, distributed-systems design, and clean code practices.
+This is the master Product Requirements Document for an Incident Management System (Vellum) — a backend-heavy distributed system that ingests failure signals from a heterogeneous tech stack, deduplicates and tracks them as work items through a state-machine lifecycle, and exposes a workflow dashboard for human responders. The deliverable is a complete, runnable, containerized application built in seven days as part of an engineering assignment intended to demonstrate concurrency, distributed-systems design, and clean code practices.
 
 This document is the foundation. It defines **what** is being built and **why**. It does not contain code, schemas, or step-by-step build instructions — those live in companion documents. Read this once end-to-end before opening any other document. Re-read sections 4 and 5 (functional and non-functional requirements) before reviewing any code Claude generates; they are the contract.
 
@@ -39,13 +39,13 @@ Three problems compound:
 
 ### 2.2 The system we are building
 
-The IMS is the layer between raw observability data (logs, metrics, traces) and human responders. It ingests signals at high volume, debounces them into a small number of work items, runs each work item through a strict state-machine lifecycle that enforces a Root Cause Analysis (RCA) on closure, and exposes a dashboard for live triage.
+The Vellum is the layer between raw observability data (logs, metrics, traces) and human responders. It ingests signals at high volume, debounces them into a small number of work items, runs each work item through a strict state-machine lifecycle that enforces a Root Cause Analysis (RCA) on closure, and exposes a dashboard for live triage.
 
 It is not a replacement for Datadog, Grafana, PagerDuty, or Jira. It sits beside them and orchestrates the response workflow. Real signals would flow into it from those tools; real alerts would flow out of it to those tools. For this build, we mock both sides — a script simulates inbound signals and alerters log to console or a Slack webhook.
 
 ### 2.3 Why this is a useful assignment
 
-The IMS deliberately exercises a wide surface of senior backend skills: high-throughput ingestion, backpressure, concurrency primitives, polyglot persistence, design patterns (State, Strategy), transactional integrity, async processing, retries, observability, containerization, and a small reactive frontend. A reviewer scanning the codebase and README can assess all of these in one project.
+The Vellum deliberately exercises a wide surface of senior backend skills: high-throughput ingestion, backpressure, concurrency primitives, polyglot persistence, design patterns (State, Strategy), transactional integrity, async processing, retries, observability, containerization, and a small reactive frontend. A reviewer scanning the codebase and README can assess all of these in one project.
 
 ---
 
@@ -187,7 +187,7 @@ MTTR is computed automatically as `incident_end - incident_start` and stored on 
 
 ## 6. User Personas & Journeys
 
-Three personas use the IMS. We do not implement auth, but the personas shape what the UI prioritizes.
+Three personas use the Vellum. We do not implement auth, but the personas shape what the UI prioritizes.
 
 ### 6.1 The on-call SRE
 

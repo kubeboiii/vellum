@@ -4,7 +4,7 @@ This file gives Claude Code the operational context for working in this reposito
 
 ## What this project is
 
-A Mission-Critical **Incident Management System (IMS)** — a backend-heavy distributed system that ingests failure signals at 10K/sec, debounces them into work items, runs them through a state-machine lifecycle with mandatory RCA on closure, and exposes a Next.js dashboard for triage. Built as a 7-day engineering assignment to showcase concurrency, distributed-systems design, and clean code.
+A Mission-Critical **Incident Management System (Vellum)** — a backend-heavy distributed system that ingests failure signals at 10K/sec, debounces them into work items, runs them through a state-machine lifecycle with mandatory RCA on closure, and exposes a Next.js dashboard for triage. Built as a 7-day engineering assignment to showcase concurrency, distributed-systems design, and clean code.
 
 For the full picture, read in order:
 1. `docs/00-master-prd.md` — what we're building and why (functional + non-functional requirements)
@@ -38,7 +38,7 @@ Do **not** swap out a stack item without explicit approval. If something feels m
 
 ```
 backend/
-  cmd/ims/main.go             # entrypoint; wires everything
+  cmd/vellum/main.go             # entrypoint; wires everything
   internal/
     ingest/      # HTTP + gRPC handlers, rate limit
     pipeline/    # bounded channel, worker pool, metrics ticker
@@ -83,7 +83,7 @@ docs/                           # PRD, architecture, phases
 **Go imports order (gofmt does this, but to be explicit):**
 1. stdlib
 2. third-party
-3. internal (`github.com/<user>/ims/internal/...`)
+3. internal (`github.com/<user>/vellum/internal/...`)
 
 **TypeScript/Next.js:**
 - App Router only (no Pages Router)
@@ -116,7 +116,7 @@ These are not negotiable and Claude must enforce them on itself when writing cod
 docker compose -f docker/compose.yaml up
 
 # Run backend locally (assumes DBs are up via compose)
-cd backend && go run ./cmd/ims
+cd backend && go run ./cmd/vellum
 
 # Run all tests with race detector
 cd backend && go test -race ./...

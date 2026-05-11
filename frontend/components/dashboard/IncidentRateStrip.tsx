@@ -1,14 +1,3 @@
-// IncidentRateStrip — a single 15-minute bar chart showing how many
-// NEW incidents started per minute. Replaces an earlier design that
-// used 5 auto-scaled sparklines (one per minute); those gave the eye
-// no way to compare a quiet minute against a noisy one because each
-// sparkline normalised to its own min/max. A shared y-axis fixes that.
-//
-// Source: an incident's `first_signal_ts` is the moment the
-// debouncer created its work_item. Counting those by minute is the
-// only signal we have from the active-incidents endpoint of "what
-// just started" vs "what's been smouldering."
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -30,11 +19,9 @@ const SEV_COLOR: Record<Severity, string> = {
 };
 
 interface Bucket {
-  // x-axis: 0 = current minute, -1 = last minute, etc.
-  // We use a string label here because XAxis tick formatting on
-  // negative numeric ticks is awkward.
+
   m: string;
-  // m_idx is the numeric position, used for sorting and tooltip.
+
   m_idx: number;
   P0: number;
   P1: number;
@@ -43,8 +30,7 @@ interface Bucket {
 }
 
 export function IncidentRateStrip({ items }: Props) {
-  // `now` is captured at mount-time and refreshed every 30s so the
-  // chart doesn't quietly drift. SSR-safe: server renders empty.
+
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());
@@ -60,15 +46,12 @@ export function IncidentRateStrip({ items }: Props) {
             New incidents · last {WINDOW_MIN} min
           </h2>
         </header>
-        {/* Reserve the chart's height so layout doesn't shift on mount. */}
+        {}
         <div className="h-24" aria-hidden />
       </section>
     );
   }
 
-  // Build 15 buckets, oldest → newest. Bucket index i represents
-  // the minute starting (now - (WINDOW_MIN - i) min) and ending
-  // 60 seconds later. i = WINDOW_MIN - 1 is the current minute.
   const buckets: Bucket[] = [];
   for (let i = 0; i < WINDOW_MIN; i++) {
     const minutesAgo = WINDOW_MIN - 1 - i;
@@ -116,9 +99,7 @@ export function IncidentRateStrip({ items }: Props) {
               stroke="#71717A"
               tick={{ fontSize: 10, fontFamily: "monospace", fill: "#71717A" }}
               tickLine={false}
-              // Only label every 3rd tick to avoid crowding; first
-              // and last are always labeled by Recharts when
-              // interval="preserveStartEnd".
+
               interval={2}
             />
             <YAxis
@@ -138,10 +119,7 @@ export function IncidentRateStrip({ items }: Props) {
               }}
               labelFormatter={(m) => `minute ${m}`}
             />
-            {/* Stacked by severity so a single bar reads both its
-                total height (intensity) and its composition (which
-                severity drove it). Severity-keyed palette matches
-                the rest of the dashboard. */}
+            {}
             <Bar dataKey="P0" stackId="sev" fill={SEV_COLOR.P0} isAnimationActive={false} />
             <Bar dataKey="P1" stackId="sev" fill={SEV_COLOR.P1} isAnimationActive={false} />
             <Bar dataKey="P2" stackId="sev" fill={SEV_COLOR.P2} isAnimationActive={false} />

@@ -134,14 +134,14 @@ is `degraded` not critical (we have a fallback path).
 
 | Var | Default | Why |
 |---|---|---|
-| `DATABASE_URL` | `postgres://ims:ims@localhost:5432/ims?sslmode=disable` | pgx pool DSN |
-| `MONGO_URI` | `mongodb://ims:ims@localhost:27017/ims?authSource=admin` | mongo-driver URI |
+| `DATABASE_URL` | `postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable` | pgx pool DSN |
+| `MONGO_URI` | `mongodb://vellum:vellum@localhost:27017/vellum?authSource=admin` | mongo-driver URI |
 | `REDIS_ADDR` | `localhost:6379` | go-redis address |
-| `IMS_DEBOUNCE_WINDOW_SECONDS` | `10` | FR-3.1 |
-| `IMS_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
-| `IMS_RETRY_MAX_ATTEMPTS` | `3` | FR-8.3 / 01-arch §6.3 |
-| `IMS_RETRY_BASE_MS` | `100` | base for exponential backoff |
-| `IMS_DEP_PING_TIMEOUT` | `500ms` | per-dep budget on /health |
+| `VELLUM_DEBOUNCE_WINDOW_SECONDS` | `10` | FR-3.1 |
+| `VELLUM_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
+| `VELLUM_RETRY_MAX_ATTEMPTS` | `3` | FR-8.3 / 01-arch §6.3 |
+| `VELLUM_RETRY_BASE_MS` | `100` | base for exponential backoff |
+| `VELLUM_DEP_PING_TIMEOUT` | `500ms` | per-dep budget on /health |
 
 ---
 
@@ -162,7 +162,7 @@ is `degraded` not critical (we have a fallback path).
    component_id → assert ≤ ⌈N/100⌉ distinct work_item_ids returned.
 7. `internal/processor` — orchestrates everything. Takes interfaces for
    each repo so unit tests can use fakes. Backoff wraps each write.
-8. `cmd/ims/main.go` — bring up pools, load the Lua script, build the
+8. `cmd/vellum/main.go` — bring up pools, load the Lua script, build the
    processor, hand it to `pipeline.New(... , processor.Process)`. Upgrade
    `/health` handler with the Pinger list.
 9. `scripts/simulate-component-storm.sh` — fire 200 signals at one

@@ -1,8 +1,3 @@
-// TimeInState — from the state_transitions audit log, compute how
-// long the incident spent in each state. Helps the post-mortem
-// author articulate "we lost 12 minutes between OPEN and someone
-// taking it" without re-deriving from timestamps by hand.
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -31,7 +26,7 @@ interface Props {
 }
 
 export function TimeInState({ work_item, transitions }: Props) {
-  // Same "right edge ticks while open" trick as TransitionTimeline.
+
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
     setNowMs(Date.now());
@@ -39,9 +34,6 @@ export function TimeInState({ work_item, transitions }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  // Build a synthetic transition list including OPEN @ start, then
-  // walk pairs to derive durations per state. Final segment uses
-  // closed_at if available, else now.
   const sorted = [...transitions].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );

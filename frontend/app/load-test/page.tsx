@@ -1,11 +1,3 @@
-// /load-test — demo page for showing the ingestion pipeline under
-// burst. Fires N POSTs to /v1/signals at a configurable RPS,
-// counts 202 (accepted) vs 503 (queue full) vs other, and shows
-// the throughput live.
-//
-// SAFETY: count capped client-side at 10,000 and rps at 5,000.
-// Beyond those, the user is almost certainly clicking by accident.
-
 "use client";
 
 import { useRef, useState } from "react";
@@ -35,11 +27,11 @@ type RunState = "idle" | "running" | "done";
 interface RunStats {
   sent: number;
   accepted: number;
-  rejected: number; // 503 specifically
-  failed: number; // any other error
+  rejected: number;
+  failed: number;
   startedAt: number;
   endedAt: number | null;
-  latencies: number[]; // per-request ms
+  latencies: number[];
 }
 
 const ZERO_STATS: RunStats = {
@@ -72,8 +64,6 @@ export default function LoadTestPage() {
     setStats(s);
     setState("running");
 
-    // We fire-and-track each request individually so the counters
-    // tick as responses land, not after a Promise.all settles.
     const promises: Promise<void>[] = [];
     let lastSent = performance.now();
     for (let i = 0; i < safeCount; i++) {
@@ -113,8 +103,6 @@ export default function LoadTestPage() {
       promises.push(p);
       setStats((cur) => ({ ...cur, sent: cur.sent + 1 }));
 
-      // Pace: sleep until the next tick. Drift correction so we
-      // hit our target rps even if a previous iteration was slow.
       const nextAt = lastSent + intervalMs;
       lastSent = nextAt;
       const waitMs = nextAt - performance.now();
@@ -162,7 +150,7 @@ export default function LoadTestPage() {
           </p>
         </header>
 
-        {/* Controls */}
+        {}
         <section className="rounded-md border border-border-subtle bg-bg-surface p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <NumberField label="count" value={count} onChange={setCount} max={COUNT_MAX} />
@@ -232,7 +220,7 @@ export default function LoadTestPage() {
           </div>
         </section>
 
-        {/* Live counters */}
+        {}
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Counter label="sent" value={stats.sent} tone="neutral" />
           <Counter label="accepted (202)" value={stats.accepted} tone="good" />
@@ -240,7 +228,7 @@ export default function LoadTestPage() {
           <Counter label="failed" value={stats.failed} tone="bad" />
         </section>
 
-        {/* Summary on completion */}
+        {}
         {state === "done" && (
           <section className="rounded-md border border-border-subtle bg-bg-surface p-4">
             <h2 className="font-mono text-label uppercase tracking-[0.05em] text-text-secondary">
@@ -258,8 +246,6 @@ export default function LoadTestPage() {
     </div>
   );
 }
-
-// ---- form primitives ----
 
 function NumberField({
   label,

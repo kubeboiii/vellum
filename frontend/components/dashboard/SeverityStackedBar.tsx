@@ -1,10 +1,3 @@
-// SeverityStackedBar — one horizontal bar showing the active mix
-// of P0/P1/P2/P3 across all incidents. Replaces the question
-// "how bad is it right now?" with a single glance.
-//
-// Above the bar: four severity counter chips. The P0 chip
-// pulses if any P0 is active (matches §6.7 pulse vocabulary).
-
 "use client";
 
 import type { Severity, WorkItem } from "@/lib/types";
@@ -51,7 +44,7 @@ export function SeverityStackedBar({ items }: Props) {
         </span>
       </header>
 
-      {/* Counter chips. */}
+      {}
       <div className="mb-3 flex flex-wrap items-center gap-4">
         {ORDER.map((sev) => {
           const pulse = sev === "P0" && counts.P0 > 0;
@@ -76,7 +69,7 @@ export function SeverityStackedBar({ items }: Props) {
         })}
       </div>
 
-      {/* The bar itself. */}
+      {}
       <div
         className="flex h-1.5 w-full overflow-hidden rounded-sm bg-bg-elevated"
         role="img"

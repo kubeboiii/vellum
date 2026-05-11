@@ -1,20 +1,3 @@
-// Post-mortem author's home (PRD §6.3).
-//
-// Layout:
-//   - RCA quality stats strip (% closed with RCA, avg fix length,
-//     avg prevention length, RCAs by author)
-//   - Queue of RESOLVED-waiting-for-RCA incidents, oldest first.
-//     Each card → "Write RCA →" → /incidents/{id}/rca
-//
-// Data sources:
-//   - listIncidents() — active list, filter to status === "RESOLVED"
-//   - listClosedIncidents() — for quality stats, fetched once
-//   - lazy: getIncident per closed item to pull RCA stats (capped at 50)
-//
-// This page never blocks on the lazy fetch — quality stats show
-// "computing…" until they land; the RESOLVED queue renders on
-// first poll.
-
 "use client";
 
 import Link from "next/link";
@@ -43,7 +26,6 @@ export default function PostmortemPage() {
   const [stats, setStats] = useState<QualityStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Poll resolved-list every 5s; closed list once on mount.
   useEffect(() => {
     let cancelled = false;
     async function poll() {
@@ -79,7 +61,6 @@ export default function PostmortemPage() {
     };
   }, []);
 
-  // Lazy quality stats — compute when `closed` lands.
   useEffect(() => {
     if (!closed) return;
     let cancelled = false;
@@ -125,8 +106,6 @@ export default function PostmortemPage() {
     };
   }, [closed]);
 
-  // Sort RESOLVED by last_signal_ts asc (oldest first — those need
-  // the RCA most urgently).
   const queue = useMemo(
     () =>
       [...resolved].sort(

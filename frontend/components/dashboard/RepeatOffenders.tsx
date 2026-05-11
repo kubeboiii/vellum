@@ -1,7 +1,3 @@
-// RepeatOffenders — group closed incidents by component_id, show
-// count + avg MTTR for the top-5. The SRE knows "RDBMS_PRIMARY_01
-// closed 7 times this period · avg 11m" — actionable, not noise.
-
 "use client";
 
 import Link from "next/link";
@@ -16,12 +12,12 @@ interface Offender {
   component_id: string;
   count: number;
   avgMttrSec: number;
-  // Latest incident on this component — used as the click-through.
+
   latestId: string;
 }
 
 export function RepeatOffenders({ items }: Props) {
-  // Group by component_id; ignore items without mttr.
+
   const byComp = new Map<string, { items: WorkItem[]; latest: WorkItem }>();
   for (const wi of items) {
     if (typeof wi.mttr_seconds !== "number") continue;

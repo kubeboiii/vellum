@@ -1,7 +1,7 @@
-# Project Notes — IMS Study Guide
+# Project Notes — Vellum Study Guide
 
 > **Purpose:** A phase-by-phase Q&A walkthrough of every design choice in
-> the IMS project. Written for someone learning backend development who
+> the Vellum project. Written for someone learning backend development who
 > wants to actually understand the code, not just ship it. Also doubles
 > as interview prep — every Q is something a senior reviewer might ask.
 

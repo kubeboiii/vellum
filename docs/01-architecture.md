@@ -22,9 +22,9 @@ This document does not duplicate requirements (see `00-master-prd.md`) and does 
 
 ---
 
-## 2. System Context — Where the IMS Sits
+## 2. System Context — Where the Vellum Sits
 
-The IMS is the orchestration layer between raw observability signals and human responders. At the boundaries:
+The Vellum is the orchestration layer between raw observability signals and human responders. At the boundaries:
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ flowchart LR
         synth["Synthetic monitors"]
     end
 
-    ims["<b>IMS</b><br/>(this system)<br/><br/>aggregate · debounce<br/>lifecycle · alert"]
+    vellum["<b>Vellum</b><br/>(this system)<br/><br/>aggregate · debounce<br/>lifecycle · alert"]
 
     subgraph consumers["Consumers"]
         direction TB
@@ -44,18 +44,18 @@ flowchart LR
         pd["PagerDuty (stub)"]
     end
 
-    producers -- "HTTP / gRPC<br/>10k signals/sec" --> ims
-    ims -- "REST" --> dash
-    ims -- "webhook" --> slack
-    ims -- "stub" --> pd
+    producers -- "HTTP / gRPC<br/>10k signals/sec" --> vellum
+    vellum -- "REST" --> dash
+    vellum -- "webhook" --> slack
+    vellum -- "stub" --> pd
 
     classDef sys fill:#0a0a0a,stroke:#bef264,stroke-width:2px,color:#bef264
     classDef boundary fill:#1a1a1a,stroke:#3f3f46,color:#d4d4d8
-    class ims sys
+    class vellum sys
     class producers,consumers boundary
 ```
 
-Producers emit signals at high rates. The IMS aggregates them into work items, runs them through a lifecycle, and emits alerts. Consumers are humans (via dashboard) and machines (alerter webhooks).
+Producers emit signals at high rates. Vellum aggregates them into work items, runs them through a lifecycle, and emits alerts. Consumers are humans (via dashboard) and machines (alerter webhooks).
 
 For this build, producers are mocked by the failure-simulator script in `/scripts/`, and the only real consumer integration is an optional Slack webhook. Everything else (PagerDuty, etc.) is stubbed.
 
@@ -70,7 +70,7 @@ flowchart LR
     http[/"HTTP :8080"/]
     grpc[/"gRPC :9090"/]
 
-    subgraph backend["ims-backend (Go, single binary)"]
+    subgraph backend["vellum-backend (Go, single binary)"]
         direction TB
         api["HTTP + gRPC handlers"]
         rl["Rate limiter<br/>(token bucket)"]
@@ -86,7 +86,7 @@ flowchart LR
     pg[("<b>Postgres + TimescaleDB</b><br/>work_items · rca<br/>state_transitions<br/>signal_metrics")]
     mongo[("<b>MongoDB</b><br/>signals<br/>dead_letter")]
 
-    frontend["ims-frontend<br/>(Next.js dashboard)"]
+    frontend["vellum-frontend<br/>(Next.js dashboard)"]
 
     http --> api
     grpc --> api
@@ -445,10 +445,10 @@ This table is the most defensible piece of the design. Be ready to talk through 
 Standard Go project layout with `internal/` for non-exported packages. Frontend in a sibling folder.
 
 ```
-ims/
+vellum/
 ├── backend/
 │   ├── cmd/
-│   │   └── ims/main.go              # entrypoint; wires everything
+│   │   └── vellum/main.go           # entrypoint; wires everything
 │   ├── internal/
 │   │   ├── ingest/                  # HTTP + gRPC handlers, rate limit
 │   │   ├── pipeline/                # channel, worker pool, metrics
@@ -548,7 +548,7 @@ These are choices made for v1 that a senior reviewer might challenge. Be ready w
 - **Q: Why not Kafka in front of the workers?** Answered in §4.4. In-process channel meets throughput; interface is `chan Signal`; swap is local.
 - **Q: Why not gRPC-only?** HTTP is the lowest-friction protocol for the failure simulator, ad-hoc curl debugging, and the dashboard's polling. gRPC streaming is added for the high-volume internal source case.
 - **Q: Why a polling dashboard instead of SSE / WebSocket?** Polling at 2s is good enough for the demo and is simpler. WebSocket is on the bonus list (B2).
-- **Q: Why is debounce keyed only by `component_id` and not `(component_id, error_type)`?** v1 simplicity. A real IMS would cluster on multiple dimensions; we explicitly note this as a future evolution.
+- **Q: Why is debounce keyed only by `component_id` and not `(component_id, error_type)`?** v1 simplicity. A real Vellum would cluster on multiple dimensions; we explicitly note this as a future evolution.
 - **Q: Why not auto-replay dead-letter?** Most dead-letters are caused by schema drift or persistent backend failure; auto-replay risks loops. Human inspection is intentional for v1.
 - **Q: Why TimescaleDB and not Prometheus?** Prometheus is a pull-based metrics system; we need push-based timeseries on application events (signals, MTTR). Timescale-as-Postgres-extension also means one fewer driver and container.
 - **Q: Why SERIALIZABLE for state transitions, not READ COMMITTED?** SERIALIZABLE protects against phantom reads on the `state_transitions` audit table. The contention is low (transitions are human-driven, not high-frequency), so the performance cost is negligible.

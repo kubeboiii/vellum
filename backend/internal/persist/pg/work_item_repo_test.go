@@ -16,18 +16,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// startPostgres boots an ephemeral TimescaleDB-on-Postgres container,
-// runs every migration file, and returns a ready-to-use pool. It's the
-// shared fixture for all `pg` integration tests.
-//
-// We use the testcontainers-go `postgres` module (not the generic
-// container runner) because it knows about Postgres-specific readiness
-// signals — the "ready to accept connections" log line shows up twice
-// during boot, and only the second one means the DB is actually
-// queryable. Generic wait-for-port-open would pass on the first.
 func startPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {
@@ -37,19 +28,16 @@ func startPostgres(t *testing.T) *pgxpool.Pool {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	// Resolve the absolute path to backend/migrations from this test
-	// file's location, regardless of where `go test` is invoked from.
 	_, thisFile, _, _ := runtime.Caller(0)
 	migrationsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "migrations")
 
 	container, err := tcpostgres.Run(ctx,
-		// Same image as docker/compose.yaml so the extension is loaded.
+
 		"timescale/timescaledb:2.17.2-pg16",
 		tcpostgres.WithDatabase("ims"),
 		tcpostgres.WithUsername("ims"),
 		tcpostgres.WithPassword("ims"),
-		// Wait until the readiness log line appears TWICE (Postgres
-		// quirk during init).
+
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
@@ -76,21 +64,15 @@ func startPostgres(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 
-	// Enable the timescaledb extension (the init.sql in docker/postgres
-	// is what does this in real use — testcontainers doesn't run it).
 	if _, err := pool.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS timescaledb"); err != nil {
 		t.Fatalf("enable timescaledb: %v", err)
 	}
 
-	// Apply all .up.sql files in numeric order. Using filepath.Glob +
-	// sort keeps us in lock-step with golang-migrate's naming convention
-	// without pulling the migrate library into tests.
 	matches, err := filepath.Glob(filepath.Join(migrationsDir, "*.up.sql"))
 	if err != nil {
 		t.Fatalf("glob migrations: %v", err)
 	}
-	// Glob returns lexicographic order, which matches "001_, 002_, ..."
-	// so no additional sort needed.
+
 	for _, path := range matches {
 		body, err := os.ReadFile(path)
 		if err != nil {
@@ -127,8 +109,6 @@ func TestWorkItemRepo_InsertAndIncrement(t *testing.T) {
 		t.Fatalf("insert: %v", err)
 	}
 
-	// Bump signal_count three times with monotonically increasing
-	// timestamps; final state should be count=4 and last_ts=ts3.
 	ts := sig.Timestamp
 	for i := 0; i < 3; i++ {
 		ts = ts.Add(time.Second)
@@ -137,7 +117,6 @@ func TestWorkItemRepo_InsertAndIncrement(t *testing.T) {
 		}
 	}
 
-	// Read back.
 	var (
 		count      int
 		lastSignal time.Time
@@ -166,10 +145,6 @@ func TestWorkItemRepo_IncrementNotFound(t *testing.T) {
 	}
 }
 
-// TestWorkItemRepo_ConcurrentIncrement: the IncrementSignalCount UPDATE
-// must be safe under concurrent updates to the same row. We do 50
-// parallel increments and assert the final count is exactly 50 + 1
-// (initial) — no lost updates.
 func TestWorkItemRepo_ConcurrentIncrement(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)

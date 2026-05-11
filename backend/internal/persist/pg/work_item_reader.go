@@ -8,12 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// GetByID reads a single work_item by primary key. Non-locking,
-// non-transactional — used by GET /v1/incidents/:id and by tests.
-// Returns ErrNotFound if no row matches.
 func (r *WorkItemRepository) GetByID(ctx context.Context, id uuid.UUID) (model.WorkItem, error) {
 	const q = `
 		SELECT id, component_id, component_type, severity, status,
@@ -26,19 +23,11 @@ func (r *WorkItemRepository) GetByID(ctx context.Context, id uuid.UUID) (model.W
 	return scanWorkItem(r.pool.QueryRow(ctx, q, id))
 }
 
-// ListActive returns the non-CLOSED Work Items sorted by severity
-// (P0 first) then by last_signal_ts DESC. Powers GET /v1/incidents
-// (the live feed). The partial index `idx_work_items_active` makes
-// this scan small even with months of CLOSED rows in the table.
-//
-// `limit` caps the result; the live feed will pass something like
-// 100 to keep the response small.
 func (r *WorkItemRepository) ListActive(ctx context.Context, limit int) ([]model.WorkItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	// Ordering by severity: P0 < P1 < P2 < P3 lexicographically, so
-	// ASC sorts P0 first. Lucky alignment of the enum to lex order.
+
 	const q = `
 		SELECT id, component_id, component_type, severity, status,
 		       signal_count, first_signal_ts, last_signal_ts,
@@ -69,16 +58,6 @@ func (r *WorkItemRepository) ListActive(ctx context.Context, limit int) ([]model
 	return out, nil
 }
 
-// ListClosed returns CLOSED Work Items sorted by closed_at DESC
-// (most recently closed first). Powers the Phase 5 /incidents/closed
-// history page — what the post-mortem author opens to find what they
-// just submitted an RCA for. Limited to `limit`, default 100.
-//
-// Unlike ListActive, this scan can touch every CLOSED row in the
-// table over time. We don't have a partial index on closed-status
-// yet; the default btree on (created_at) is fine while volumes are
-// small. If incident volume grows, add an index on (closed_at DESC)
-// WHERE status = 'CLOSED'.
 func (r *WorkItemRepository) ListClosed(ctx context.Context, limit int) ([]model.WorkItem, error) {
 	if limit <= 0 {
 		limit = 100
@@ -113,15 +92,10 @@ func (r *WorkItemRepository) ListClosed(ctx context.Context, limit int) ([]model
 	return out, nil
 }
 
-// rowScanner is the narrow interface pgx.Row and pgx.Rows both satisfy
-// for our purposes — lets scanWorkItem be shared between GetByID
-// (single row) and ListActive (iteration).
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-// scanWorkItem decodes one row into a model.WorkItem. Centralises the
-// column order so a schema change is a one-file edit (vs. four).
 func scanWorkItem(s rowScanner) (model.WorkItem, error) {
 	var wi model.WorkItem
 	var componentType, severity, status string

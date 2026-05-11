@@ -6,14 +6,11 @@ import (
 	"testing"
 )
 
-// TestLoadConfig_Defaults: with no env set, every knob falls back to its
-// documented default. This catches the case where someone renames a const
-// without updating loadConfig.
 func TestLoadConfig_Defaults(t *testing.T) {
 	for _, k := range []string{
-		"IMS_HTTP_ADDR", "IMS_QUEUE_CAPACITY", "IMS_WORKER_COUNT",
-		"IMS_RATE_LIMIT_RPS", "IMS_RATE_LIMIT_BURST",
-		"IMS_METRICS_INTERVAL", "IMS_SHUTDOWN_TIMEOUT",
+		"VELLUM_HTTP_ADDR", "VELLUM_QUEUE_CAPACITY", "VELLUM_WORKER_COUNT",
+		"VELLUM_RATE_LIMIT_RPS", "VELLUM_RATE_LIMIT_BURST",
+		"VELLUM_METRICS_INTERVAL", "VELLUM_SHUTDOWN_TIMEOUT",
 	} {
 		t.Setenv(k, "")
 	}
@@ -29,14 +26,12 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_Overrides: env vars win over defaults; bad values fall
-// back to defaults with a log line (not tested) rather than crashing.
 func TestLoadConfig_Overrides(t *testing.T) {
-	t.Setenv("IMS_HTTP_ADDR", ":9090")
-	t.Setenv("IMS_QUEUE_CAPACITY", "1000")
-	t.Setenv("IMS_WORKER_COUNT", "4")
-	t.Setenv("IMS_RATE_LIMIT_RPS", "500.5")
-	t.Setenv("IMS_METRICS_INTERVAL", "1s")
+	t.Setenv("VELLUM_HTTP_ADDR", ":9090")
+	t.Setenv("VELLUM_QUEUE_CAPACITY", "1000")
+	t.Setenv("VELLUM_WORKER_COUNT", "4")
+	t.Setenv("VELLUM_RATE_LIMIT_RPS", "500.5")
+	t.Setenv("VELLUM_METRICS_INTERVAL", "1s")
 	c := loadConfig()
 	if c.httpAddr != ":9090" {
 		t.Errorf("httpAddr override broken: %q", c.httpAddr)
@@ -55,10 +50,8 @@ func TestLoadConfig_Overrides(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_BadValueFallsBack: a non-numeric env var doesn't crash;
-// the documented default kicks in.
 func TestLoadConfig_BadValueFallsBack(t *testing.T) {
-	t.Setenv("IMS_QUEUE_CAPACITY", "not-a-number")
+	t.Setenv("VELLUM_QUEUE_CAPACITY", "not-a-number")
 	c := loadConfig()
 	if c.queueCapacity != defaultQueueCapacity {
 		t.Errorf("bad value should fall back to default, got %d", c.queueCapacity)
@@ -66,13 +59,11 @@ func TestLoadConfig_BadValueFallsBack(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	// Defensive: prevent tests from inheriting a wonky env from the dev
-	// machine. t.Setenv inside each test scopes correctly anyway, but
-	// this guards against forgotten resets.
+
 	for _, k := range []string{
-		"IMS_HTTP_ADDR", "IMS_QUEUE_CAPACITY", "IMS_WORKER_COUNT",
-		"IMS_RATE_LIMIT_RPS", "IMS_RATE_LIMIT_BURST",
-		"IMS_METRICS_INTERVAL", "IMS_SHUTDOWN_TIMEOUT",
+		"VELLUM_HTTP_ADDR", "VELLUM_QUEUE_CAPACITY", "VELLUM_WORKER_COUNT",
+		"VELLUM_RATE_LIMIT_RPS", "VELLUM_RATE_LIMIT_BURST",
+		"VELLUM_METRICS_INTERVAL", "VELLUM_SHUTDOWN_TIMEOUT",
 	} {
 		_ = os.Unsetenv(k)
 	}

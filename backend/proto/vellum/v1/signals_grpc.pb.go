@@ -24,9 +24,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             (unknown)
-// source: ims/v1/signals.proto
+// source: vellum/v1/signals.proto
 
-package imsv1
+package vellumv1
 
 import (
 	context "context"
@@ -41,7 +41,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SignalService_IngestSignals_FullMethodName = "/ims.v1.SignalService/IngestSignals"
+	SignalService_IngestSignals_FullMethodName = "/vellum.v1.SignalService/IngestSignals"
 )
 
 // SignalServiceClient is the client API for SignalService service.
@@ -136,7 +136,7 @@ type SignalService_IngestSignalsServer = grpc.BidiStreamingServer[Signal, Ack]
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var SignalService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "ims.v1.SignalService",
+	ServiceName: "vellum.v1.SignalService",
 	HandlerType: (*SignalServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -147,5 +147,5 @@ var SignalService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "ims/v1/signals.proto",
+	Metadata: "vellum/v1/signals.proto",
 }

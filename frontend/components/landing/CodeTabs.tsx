@@ -1,32 +1,6 @@
-// LANDING.md §5.7 — live code tabs.
-//
-// The most important credibility section on the page. Real code from
-// the actual backend, syntax-highlighted with the custom ims-dark
-// Shiki theme (see lib/highlight.ts).
-//
-// Architecture:
-//   * This file is a Server Component that pre-renders the highlighted
-//     HTML at build time for all four tabs.
-//   * It hands the rendered HTML strings to <CodeTabsClient> which
-//     manages the tab-switch state on the client. Zero Shiki runtime
-//     ships to the browser.
-//
-// Tabs (in spec order):
-//   1. Ingestion        — POST /v1/signals non-blocking enqueue
-//   2. Debounce         — the Lua atomic script
-//   3. State machine    — ResolvedState.CanTransitionTo (the RCA rule)
-//   4. Alerter          — Registry.ForWorkItem strategy pattern
-
 import { highlight } from "@/lib/highlight";
 
 import { CodeTabsClient, type Tab } from "./CodeTabsClient";
-
-// ---- Real source snippets ----
-//
-// These are LITERALLY copy-pasted from the repo. Don't edit them
-// inline — re-paste from the file when the backend changes.
-// The file-path comments in the prose must match these snippets'
-// actual file paths.
 
 const INGESTION_CODE = `// backend/internal/ingest/handler.go
 // THE HOT PATH. Single non-blocking enqueue. Do NOT add work here.
@@ -103,34 +77,31 @@ func (r *Registry) ForWorkItem(wi model.WorkItem) Alerter {
     return r.alerters["console"]
 }`;
 
-// ---- Tab content ----
-
 const TAB_PROSE: Record<string, { p1: string; p2: string; href: string }> = {
   ingestion: {
     p1: "The handler accepts a signal, validates it, and pushes it onto a bounded Go channel. One non-blocking select — no DB call, no lock, no work happens on the hot path.",
     p2: "When the channel is full we return 503 with a Retry-After header. That's the entire backpressure story. The pipeline's Submit method is the single point where signals enter the system.",
-    href: "https://github.com/kubeboiii/ims/blob/main/backend/internal/ingest/handler.go",
+    href: "https://github.com/kubeboiii/vellum/blob/main/backend/internal/ingest/handler.go",
   },
   debounce: {
     p1: "One Lua script collapses up to 100 correlated signals into a single Work Item. Redis runs Lua server-side, single-threaded — so the check-then-act is atomic across every ingestion worker.",
     p2: "No distributed lock. No Redlock edge cases. If Redis goes down, the system degrades to always-CREATE mode and keeps accepting signals. When Redis comes back, debouncing resumes on the next call.",
-    href: "https://github.com/kubeboiii/ims/blob/main/backend/internal/debounce/script.lua",
+    href: "https://github.com/kubeboiii/vellum/blob/main/backend/internal/debounce/script.lua",
   },
   "state-machine": {
     p1: "The State pattern encodes the OPEN → INVESTIGATING → RESOLVED → CLOSED lifecycle. Every state-specific rule lives on its own type. There's no switch statement.",
     p2: "The rule that ResolvedState can only transition to CLOSED with a valid RCA lives in exactly one method. A reviewer asking 'where do we enforce the RCA rule?' finds it in five seconds.",
-    href: "https://github.com/kubeboiii/ims/blob/main/backend/internal/workflow/state.go",
+    href: "https://github.com/kubeboiii/vellum/blob/main/backend/internal/workflow/state.go",
   },
   alerter: {
     p1: "The Strategy pattern routes each new Work Item to the right alerter based on severity. PagerDuty stub for P0, Slack webhook for P1/P2, Console for the rest.",
     p2: "Adding a new channel — Microsoft Teams, OpsGenie, whatever — is one new struct that implements the Alerter interface plus one new Rule. The processor, the workflow engine, and the persistence layer don't change.",
-    href: "https://github.com/kubeboiii/ims/blob/main/backend/internal/alert/alerter.go",
+    href: "https://github.com/kubeboiii/vellum/blob/main/backend/internal/alert/alerter.go",
   },
 };
 
 export async function CodeTabs() {
-  // Pre-render all four snippets to HTML at build time. Highlights
-  // happen on the server (Node), not in the browser.
+
   const [ingHtml, debHtml, stateHtml, alertHtml] = await Promise.all([
     highlight(INGESTION_CODE, "go"),
     highlight(DEBOUNCE_CODE, "lua"),

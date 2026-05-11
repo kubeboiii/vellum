@@ -1,14 +1,3 @@
-// THEME.md §7.3 + §6.6 — RCA form.
-//
-// Layout: single column, max-width 720px. Top: read-only incident
-// summary. Below: dense vertical form (16px field gap, 36px input
-// height). Bottom-right: Save Draft (ghost) + Submit & Close (primary
-// lime, only enabled when all required fields valid).
-//
-// Server-side validation in model.RCA.Validate is the source of
-// truth (CLAUDE.md rule 3). Client-side mirror provides immediate
-// feedback without a round trip.
-
 "use client";
 
 import { IconChevronLeft } from "@tabler/icons-react";
@@ -34,7 +23,7 @@ const CATEGORIES: RootCauseCategory[] = [
   "OTHER",
 ];
 
-const MIN_TEXT_LENGTH = 20; // mirrors model.rcaMinTextLength
+const MIN_TEXT_LENGTH = 20;
 
 function clientValidate(form: {
   fix: string;
@@ -104,9 +93,7 @@ export default function RCAFormPage() {
         prevention_steps: prevention,
         submitted_by: submitter,
       });
-      // Toast survives the route change because ToastProvider is at
-      // the root layout. The user sees confirmation on the detail
-      // page they're redirected to.
+
       toast.push(
         "success",
         `Incident closed · MTTR ${res.work_item.mttr_seconds ?? 0}s`,
@@ -143,7 +130,7 @@ export default function RCAFormPage() {
           </div>
         )}
 
-        {/* Read-only incident summary card (THEME.md §7.3) */}
+        {}
         {wi && (
           <section
             className="flex items-center justify-between rounded-md border border-border-subtle bg-bg-surface p-3 transition-[border-color,box-shadow] duration-base ease-out hover:border-border-strong"
@@ -251,8 +238,6 @@ export default function RCAFormPage() {
     </div>
   );
 }
-
-// ---- helpers ----
 
 function FormField({
   label,

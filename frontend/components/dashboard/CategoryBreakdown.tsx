@@ -1,9 +1,3 @@
-// CategoryBreakdown — distribution of closed incidents by RCA
-// root_cause_category. Tier-1 constraint: the /v1/incidents/closed
-// endpoint doesn't include the RCA, so we fetch RCAs lazily when
-// the user clicks "Compute". This avoids 100 round-trips on page
-// load while still surfacing the data on demand.
-
 "use client";
 
 import { useState } from "react";
@@ -26,9 +20,6 @@ const ORDER: RootCauseCategory[] = [
   "OTHER",
 ];
 
-// Each category gets a distinct hue so the chart reads as
-// categorical, not severity-ordered. All from the existing palette
-// (severity colors + accent + annotation violet).
 const FILL: Record<RootCauseCategory, string> = {
   CODE_DEFECT: "bg-sev-p0",
   INFRASTRUCTURE: "bg-sev-p1",
@@ -39,9 +30,6 @@ const FILL: Record<RootCauseCategory, string> = {
   OTHER: "bg-text-tertiary",
 };
 
-// Recharts can't read Tailwind class tokens — it needs raw colors
-// for `fill`. Mirror the same palette by hex so the donut and the
-// legend dots agree.
 const FILL_HEX: Record<RootCauseCategory, string> = {
   CODE_DEFECT: "#EF4444",
   INFRASTRUCTURE: "#F59E0B",
@@ -61,8 +49,7 @@ export function CategoryBreakdown({ items }: Props) {
     setBusy(true);
     setError(null);
     try {
-      // Parallel fetch, capped at 50 for safety (page already caps
-      // closed list at 100 in current API client).
+
       const sample = items.slice(0, 50);
       const results = await Promise.all(
         sample.map((wi) =>
@@ -127,9 +114,7 @@ export function CategoryBreakdown({ items }: Props) {
       )}
       {counts && total > 0 && (
         <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-[160px_1fr]">
-          {/* Donut. The hole in the middle holds the dominant
-              category's share so the chart answers "which root
-              cause is hurting us most?" at a single glance. */}
+          {}
           <div className="relative mx-auto h-[140px] w-[140px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -162,12 +147,11 @@ export function CategoryBreakdown({ items }: Props) {
                 />
               </PieChart>
             </ResponsiveContainer>
-            {/* Center label: dominant category's share. */}
+            {}
             <DonutCenter counts={counts} total={total} />
           </div>
 
-          {/* Legend — counts + percentages, sorted desc so the top
-              row is the dominant cause. */}
+          {}
           <ul className="space-y-1">
             {ORDER.filter((c) => counts[c] > 0)
               .sort((a, b) => counts[b] - counts[a])
@@ -201,9 +185,6 @@ export function CategoryBreakdown({ items }: Props) {
   );
 }
 
-// DonutCenter — overlays the dominant category's share as a big
-// numeral inside the donut's hole. Counts is non-empty when this
-// renders.
 function DonutCenter({
   counts,
   total,

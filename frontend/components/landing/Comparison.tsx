@@ -1,22 +1,3 @@
-// LANDING.md §5.4 — before/after comparison cards.
-//
-// Two cards side-by-side at ≥1024px; stack vertically below.
-// Each card is dense with real numbers:
-//   * Header includes a STATUS CHIP (red INCIDENT for left, lime
-//     ACTIVE for right) — sets the emotional tone before reading
-//   * Diagram is annotated: source rates on the left, stage tech
-//     labels + queue/latency stats on the right
-//   * A "snapshot bar" sits between the diagram and the outcomes,
-//     showing the operational state at a glance (inbox / mttr /
-//     queue / p99 etc.)
-//   * Outcomes list at the bottom
-//
-// Motion language is deliberately asymmetric:
-//   * LEFT: independent flickering red arrows, jittering rate
-//     counters → chaos
-//   * RIGHT: a single lime dot rolls down the pipeline, steady
-//     metric values → order
-
 "use client";
 
 import { IconAlertTriangle, IconCheck, IconCircleCheck, IconX } from "@tabler/icons-react";
@@ -39,7 +20,7 @@ export function Comparison() {
   return (
     <section id="product" className="border-t border-divider px-6 py-24 sm:py-32">
       <div className="mx-auto grid max-w-[1120px] gap-6 lg:grid-cols-2">
-        {/* LEFT — chaos */}
+        {}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -47,7 +28,7 @@ export function Comparison() {
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
           <Card
-            label="Without an IMS"
+            label="Without Vellum"
             dotClass="bg-sev-p0"
             glowClass="hover:shadow-[0_0_36px_-14px_rgba(239,68,68,0.5)] hover:border-sev-p0-border"
             statusChip={<StatusChipChaos />}
@@ -59,7 +40,7 @@ export function Comparison() {
           />
         </motion.div>
 
-        {/* RIGHT — order */}
+        {}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -67,7 +48,7 @@ export function Comparison() {
           transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
         >
           <Card
-            label="With the IMS"
+            label="With Vellum"
             dotClass="bg-accent"
             glowClass="hover:shadow-[0_0_36px_-14px_var(--accent-glow)] hover:border-accent-border"
             statusChip={<StatusChipStable />}
@@ -82,8 +63,6 @@ export function Comparison() {
     </section>
   );
 }
-
-// ---- card primitive ----
 
 interface CardProps {
   label: string;
@@ -112,9 +91,7 @@ function Card({
     <article
       className={`flex min-h-[560px] flex-col rounded-lg border border-border-subtle bg-bg-surface p-8 transition-all duration-base ease-out ${glowClass}`}
     >
-      {/* Header row: label dot + label on the left, status chip on
-          the right. The chip pulses on the left card (chaos) and
-          sits steady on the right (stable). */}
+      {}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} aria-hidden />
@@ -125,13 +102,13 @@ function Card({
         {statusChip}
       </header>
 
-      {/* Diagram — the visual centerpiece. */}
+      {}
       <div className="my-6 flex-1">{diagram}</div>
 
-      {/* Snapshot bar — operational state at a glance. */}
+      {}
       <div className="border-t border-border-subtle pt-4">{statBar}</div>
 
-      {/* Outcomes — what this card actually concludes. */}
+      {}
       <ul className="mt-5 space-y-2.5 border-t border-border-subtle pt-5">
         {outcomes.map((o) => (
           <li key={o} className="flex items-center gap-3">
@@ -141,17 +118,13 @@ function Card({
         ))}
       </ul>
 
-      {/* Closing italic footnote. Tone-setter, not informational. */}
+      {}
       <p className="mt-4 font-serif text-meta italic text-text-tertiary">
         {footnote}
       </p>
     </article>
   );
 }
-
-// =============================================================
-// Status chips — pulsing red for chaos, steady lime for stable.
-// =============================================================
 
 function StatusChipChaos() {
   return (
@@ -171,13 +144,6 @@ function StatusChipStable() {
   );
 }
 
-// =============================================================
-// Stat bars — bottom-of-diagram metric strips.
-// =============================================================
-
-// JitterStat: number jitters every ~600ms to suggest "live noise"
-// on the chaos side. The values stay within a bounded range so it
-// reads as healthy-but-spiking, not random garbage.
 function JitterStat({
   label,
   base,
@@ -261,13 +227,6 @@ function StatBarStable() {
   );
 }
 
-// =============================================================
-// DIAGRAM "BEFORE" — lone SRE under fire. Each red dashed arrow
-// flickers independently (different period, different phase) so
-// the eye can't lock onto a rhythm. Each source ALSO has a
-// jittering rate counter beside its label.
-// =============================================================
-
 function DiagramBefore() {
   const reduced = useReducedMotion();
   const sources = [
@@ -277,8 +236,7 @@ function DiagramBefore() {
     { label: "Q BACKLOG", base: 720, jitter: 90, period: 1.3, delay: 0.7 },
     { label: "K8S OOM", base: 220, jitter: 40, period: 1.7, delay: 0.5 },
   ];
-  // Sum baseline for the "TOTAL" label at top right. Keeps the
-  // total counter mostly stable while individual rows jitter.
+
   return (
     <svg
       viewBox="0 0 360 260"
@@ -300,8 +258,7 @@ function DiagramBefore() {
         </marker>
       </defs>
 
-      {/* Top-right "TOTAL" callout — sets context that all rates
-          below sum to the headline number. */}
+      {}
       <text
         x="356"
         y="14"
@@ -314,7 +271,7 @@ function DiagramBefore() {
         TOTAL · ~10K/s
       </text>
 
-      {/* SRE box — pulses red border to suggest "overwhelmed". */}
+      {}
       <motion.rect
         x="12"
         y="110"
@@ -355,7 +312,7 @@ function DiagramBefore() {
         const y = 30 + i * 44;
         return (
           <g key={s.label}>
-            {/* Right-side label */}
+            {}
             <text
               x="356"
               y={y + 4}
@@ -367,7 +324,7 @@ function DiagramBefore() {
             >
               {s.label}
             </text>
-            {/* Jittering rate beneath, in red */}
+            {}
             <JitterRate
               x={356}
               y={y + 16}
@@ -375,7 +332,7 @@ function DiagramBefore() {
               jitter={s.jitter}
               delay={s.delay}
             />
-            {/* Dashed flickering arrow */}
+            {}
             <motion.path
               d={`M 230 ${y} L 104 ${y < 132 ? y + 14 : y - 6}`}
               stroke="var(--sev-p0)"
@@ -403,9 +360,6 @@ function DiagramBefore() {
   );
 }
 
-// JitterRate — small mono text in red that jitters its number.
-// Renders as a <text> child of the parent SVG, so position is
-// given in SVG coordinates.
 function JitterRate({
   x,
   y,
@@ -446,17 +400,9 @@ function JitterRate({
   );
 }
 
-// =============================================================
-// DIAGRAM "AFTER" — orderly vertical flow with per-stage tech
-// labels and metric chips beside each node. A lime dot rolls
-// top→bottom through SIGNALS → DEBOUNCE → WORK ITEMS → SRE.
-// =============================================================
-
 function DiagramAfter() {
   const reduced = useReducedMotion();
-  // Each node carries a sub-label (tech) and a metric (operational
-  // number). The IMS-owned nodes have lime borders; the surrounding
-  // SIGNALS + SRE stay muted.
+
   const nodes = [
     {
       y: 8,
@@ -510,7 +456,7 @@ function DiagramAfter() {
 
       {nodes.map((node, i, all) => (
         <g key={node.label}>
-          {/* Main node box, centered. */}
+          {}
           <rect
             x="80"
             y={node.y}
@@ -521,7 +467,7 @@ function DiagramAfter() {
             stroke={node.muted ? "var(--diagram-stroke)" : "var(--accent)"}
             strokeWidth="1"
           />
-          {/* Primary label */}
+          {}
           <text
             x="160"
             y={node.y + 20}
@@ -533,7 +479,7 @@ function DiagramAfter() {
           >
             {node.label}
           </text>
-          {/* Tech sub-label, smaller mono italic */}
+          {}
           <text
             x="160"
             y={node.y + 34}
@@ -546,8 +492,7 @@ function DiagramAfter() {
             {node.sub}
           </text>
 
-          {/* Right-side metric chip (just text, but typographically
-              distinct via lime color for the IMS nodes). */}
+          {}
           <text
             x="356"
             y={node.y + 28}
@@ -560,7 +505,7 @@ function DiagramAfter() {
             {node.side}
           </text>
 
-          {/* Connector to next node */}
+          {}
           {i < all.length - 1 && (
             <path
               d={`M 160 ${node.y + 46} L 160 ${all[i + 1].y}`}
@@ -573,8 +518,7 @@ function DiagramAfter() {
         </g>
       ))}
 
-      {/* Traveling lime dot — 8 stops over 4s, easing through each
-          node centre + the midpoints between them. */}
+      {}
       {!reduced && (
         <motion.circle
           r="3"

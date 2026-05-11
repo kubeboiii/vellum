@@ -1,7 +1,3 @@
-// MTTRTrend — line chart of MTTR per closed incident, plotted in
-// chronological order (closed_at asc). Tells the team whether
-// resolution times are getting better or worse over time.
-
 "use client";
 
 import {
@@ -30,8 +26,7 @@ export function MTTRTrend({ items }: Props) {
       (a, b) => new Date(a.closed_at).getTime() - new Date(b.closed_at).getTime(),
     )
     .map((i) => ({
-      // x is "minutes since the oldest in the window" — keeps the
-      // axis legible when incidents span days.
+
       t: new Date(i.closed_at).getTime(),
       mttr: i.mttr_seconds,
       label: i.component_id,
@@ -51,10 +46,6 @@ export function MTTRTrend({ items }: Props) {
     );
   }
 
-  // Use the raw timestamp as a numeric x so points are spaced by
-  // real time (not insertion order). The previous design used
-  // "minutes since the oldest in the window" which was opaque to
-  // a human reader; we now format ticks as real dates/times.
   const first = points[0].t;
   const last = points[points.length - 1].t;
   const data = points.map((p) => ({
@@ -63,8 +54,7 @@ export function MTTRTrend({ items }: Props) {
     label: p.label,
   }));
   const spanMs = last - first;
-  // Pick a tick formatter that fits the span: short bursts show
-  // hh:mm, multi-day windows show MMM d.
+
   const formatTick = (ms: number) => {
     const d = new Date(ms);
     if (spanMs < 24 * 60 * 60_000) {

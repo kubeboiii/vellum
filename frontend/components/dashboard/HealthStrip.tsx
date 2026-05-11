@@ -1,11 +1,3 @@
-// HealthStrip — polls /health every 5s and renders one chip per
-// dependency (Postgres / Mongo / Redis / Timescale) plus a queue
-// depth gauge. Lives under the Nav on dashboard routes so the
-// operator can spot a degraded dep before clicking into anything.
-//
-// Resilience: if /health is unreachable (backend offline), render
-// a single "backend offline" chip instead of crashing.
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -24,9 +16,6 @@ const DEP_LABELS: Record<string, string> = {
   timescale: "Timescale",
 };
 
-// The backend uses "up" on dep status and "healthy" on the roll-up;
-// the spec calls them "ok". Map both to the same UI tone so the
-// HealthStrip doesn't care which vocabulary the backend speaks.
 function normalize(s: DepStatus | string | undefined): "ok" | "degraded" | "down" {
   if (s === "ok" || s === "up" || s === "healthy") return "ok";
   if (s === "degraded") return "degraded";
@@ -84,8 +73,7 @@ export function HealthStrip() {
     );
   }
   if (!health) {
-    // First-tick skeleton — keep the height stable so the page
-    // doesn't reflow when the first poll lands.
+
     return (
       <div className="flex h-7 items-center gap-2 border-b border-border-subtle bg-bg-elevated px-6">
         <span className="font-mono text-meta uppercase tracking-[0.05em] text-text-tertiary">
@@ -95,9 +83,6 @@ export function HealthStrip() {
     );
   }
 
-  // Iterate over the deps the backend actually returned, not a
-  // fixed list. Defends against v1 backend (no timescale) while
-  // still rendering nicely once it's added.
   const depKeys = Object.keys(health.dependencies ?? {});
 
   return (

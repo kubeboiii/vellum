@@ -8,13 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/kubeboiii/ims/internal/persist/pg"
-	"github.com/kubeboiii/ims/internal/workflow"
+	"github.com/kubeboiii/vellum/internal/persist/pg"
+	"github.com/kubeboiii/vellum/internal/workflow"
 )
 
-// parseID extracts the `:id` path parameter as a UUID. Writes the
-// 400 response itself and returns ok=false on failure so the handler
-// can early-return.
 func parseID(c *gin.Context) (uuid.UUID, bool) {
 	raw := c.Param("id")
 	id, err := uuid.Parse(raw)
@@ -25,8 +22,6 @@ func parseID(c *gin.Context) (uuid.UUID, bool) {
 	return id, true
 }
 
-// parseLimit accepts the ?limit= query string. Caps at 500 to keep
-// list responses bounded; rejects negatives.
 func parseLimit(s string) (int, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil {
@@ -41,23 +36,6 @@ func parseLimit(s string) (int, error) {
 	return n, nil
 }
 
-// writeWorkflowError maps the workflow / pg sentinels to the right
-// HTTP status codes and response body shapes.
-//
-// The mapping (matches PRD G3 and 03-api-contract sketch):
-//
-//	pg.ErrNotFound                → 404 {"error": "incident not found"}
-//	pg.ErrSerializationFailure    → 409 {"error": "concurrent update; retry"}
-//	workflow.ErrInvalidTransition → 409 {"error": "transition not allowed: ..."}
-//	workflow.ErrMissingRCA        → 422 {"error": "rca is required"}
-//	workflow.ErrIncompleteRCA     → 422 {"errors": [{field, error}, ...]}
-//	anything else                 → 500 {"error": err.Error()}
-//
-// The 40001 → 409 mapping matters under load. The processor's
-// IncrementSignalCount UPDATE (NOT in a SERIALIZABLE tx, by design)
-// can race with a workflow transition (which IS SERIALIZABLE) and
-// Postgres aborts one to preserve serial-equivalent semantics. That's
-// expected behaviour — surface it as a retryable 409, not a scary 500.
 func writeWorkflowError(c *gin.Context, err error) {
 	var ire *workflow.IncompleteRCAError
 	switch {

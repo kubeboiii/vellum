@@ -1,15 +1,15 @@
 # STATE.md
 
-> **Purpose:** Live status of the IMS build. Updated at the end of every working session.
+> **Purpose:** Live status of the Vellum build. Updated at the end of every working session.
 > **For AI assistants:** Always read this file first. It tells you where the project is and what to do next. Do not assume; check here.
 
 ---
 
 ## Current state
 
-**Phase:** 7 (Documentation & Polish) — *in progress on branch `phase-7-docs-polish`*. All 7 phases complete; final docs pass in flight.
-**Last session ended:** 2026-05-11. Merged PRs #6 (Phase 5 dashboard + landing + demo pages) and #7 (Phase 6 resilience + simulation). Phase 6 shipped: concurrency stress test (300 goroutines × same component_id @ cap=100 → exactly 3 work_items, passes under `-race`), E2E integration test against live backend on `:8080` (0.29s, behind `integration` build tag), and headless `scripts/simulate-outage.go` CLI with three scenarios. Cache scenario hits 100× debounce compression; aggregate across all three scenarios = 51× (RDBMS + MCP intentionally fan across multiple components). Phase 7 in flight: replaced ASCII diagrams in `docs/01-architecture.md` §2/§3 with Mermaid; added a Mermaid pipeline diagram + elevator pitch to README top; added Phase 6 + Phase 7 acceptance sections + a "How to demo" runbook. Remaining: `docs/prompts.md`, project-notes index + Phase 6 Q&A, `.env.example` audit, fresh-clone dry-run, decisions.md Phase 7 entries, commit + PR.
-**Next action:** Continue Phase 7 finishing steps in order: prompts.md → project-notes/phase-6 + 7 Q&A → .env.example audit → dry-run → decisions.md → commit + PR #8.
+**Phase:** Post-Phase 7 — full rename in flight on branch `rename-to-vellum`. All 7 phases complete and merged (PRs #6, #7, #8). Project renamed from "IMS" to "Vellum".
+**Last session ended:** 2026-05-11. PR #8 (Phase 7 docs polish) merged. Branched `rename-to-vellum` and executed the full rename: Go module path `github.com/kubeboiii/ims → github.com/kubeboiii/vellum`; proto package `ims.v1 → vellum.v1` (directory `proto/ims → proto/vellum`, stubs regenerated); `cmd/ims/ → cmd/vellum/`; env var prefix `IMS_* → VELLUM_*`; Docker container names `ims-* → vellum-*`; DB name + user + password `ims → vellum`; localStorage key `ims.persona → vellum.persona`; Shiki theme `ims-dark → vellum-dark`; all GitHub URLs in frontend; all `/var/log/ims/` strings; all human-facing prose across README, docs/, project-notes/, STATE.md, CLAUDE.md, THEME.md, LANDING.md. Verified live: docker compose down -v then up with renamed config, migrations applied, `go test -race ./...` passes across 14 packages, `pnpm build` clean, prod server returns 200 on all 9 routes, page title reads "Vellum", end-to-end smoke (3 signals → 1 work_item) works. **decisions.md historical entries left as-is** (they accurately describe what was true at the time).
+**Next action:** Commit + push the rename, open PR #9. Then on GitHub: rename the repository `kubeboiii/ims → kubeboiii/vellum` via Settings → General → Rename. After that, rename the local working directory `/Users/kubeboiii/Coding/ims → /Users/kubeboiii/Coding/vellum`.
 
 ---
 

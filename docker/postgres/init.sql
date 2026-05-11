@@ -1,4 +1,4 @@
--- Phase 1 init: enable the TimescaleDB extension on the ims database.
+-- Phase 1 init: enable the TimescaleDB extension on the vellum database.
 --
 -- This script runs exactly once, the first time the postgres container
 -- boots against an empty data volume (the docker-entrypoint-initdb.d

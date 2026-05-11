@@ -466,7 +466,7 @@ the RCA form). Nullable = "set in Phase 4." Using a pointer type
       to confirm work_item writes are landing there.
 - [ ] Re-run `migrate down --all` then `migrate up` and confirm tables
       are recreated cleanly.
-- [ ] Modify the debounce window via env var (`IMS_DEBOUNCE_WINDOW_SECONDS=30`),
+- [ ] Modify the debounce window via env var (`VELLUM_DEBOUNCE_WINDOW_SECONDS=30`),
       restart the backend, and verify the new window length in Redis
       (TTL is 30s on `debounce:CACHE_01:work_item`).
 - [ ] Add one new field to the Signal model and trace it through:

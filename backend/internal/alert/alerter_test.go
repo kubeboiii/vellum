@@ -12,12 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// recordingAlerter is a test-only Alerter that increments a counter
-// and records the WI it was dispatched for. Used to prove the
-// Registry routes to the right strategy.
 type recordingAlerter struct {
 	name string
 	hits atomic.Int64
@@ -41,9 +38,6 @@ func wiWith(severity model.Severity) model.WorkItem {
 	}
 }
 
-// TestRegistry_RoutesBySeverity: build the v1 registry (PagerDuty for
-// P0, Slack for P1/P2, Console for P3) and verify each severity goes
-// to the right alerter.
 func TestRegistry_RoutesBySeverity(t *testing.T) {
 	pd := &recordingAlerter{name: "pagerduty_stub"}
 	slack := &recordingAlerter{name: "slack_webhook"}
@@ -68,7 +62,7 @@ func TestRegistry_RoutesBySeverity(t *testing.T) {
 		{model.SeverityP0, pd},
 		{model.SeverityP1, slack},
 		{model.SeverityP2, slack},
-		{model.SeverityP3, console}, // falls through to fallback
+		{model.SeverityP3, console},
 	}
 	for _, tc := range cases {
 		got := reg.ForWorkItem(wiWith(tc.sev))
@@ -78,14 +72,11 @@ func TestRegistry_RoutesBySeverity(t *testing.T) {
 	}
 }
 
-// TestRegistry_FallsBackToConsoleWhenNoMatch: if no rule matches, the
-// Registry hands back the registered "console" alerter so the system
-// is never completely silent.
 func TestRegistry_FallsBackToConsoleWhenNoMatch(t *testing.T) {
 	console := &recordingAlerter{name: "console"}
 	reg := NewRegistry(
 		map[string]Alerter{"console": console},
-		nil, // zero rules; every WI falls through
+		nil,
 	)
 
 	got := reg.ForWorkItem(wiWith(model.SeverityP0))
@@ -94,23 +85,18 @@ func TestRegistry_FallsBackToConsoleWhenNoMatch(t *testing.T) {
 	}
 }
 
-// TestConsoleAlerter_NoOpDispatch: ConsoleAlerter.Dispatch never errors.
 func TestConsoleAlerter_NoOpDispatch(t *testing.T) {
 	if err := (ConsoleAlerter{}).Dispatch(context.Background(), wiWith(model.SeverityP3)); err != nil {
 		t.Errorf("unexpected: %v", err)
 	}
 }
 
-// TestPagerDutyStub_NoOpDispatch: stub never errors.
 func TestPagerDutyStub_NoOpDispatch(t *testing.T) {
 	if err := (PagerDutyStub{}).Dispatch(context.Background(), wiWith(model.SeverityP0)); err != nil {
 		t.Errorf("unexpected: %v", err)
 	}
 }
 
-// TestSlackAlerter_PostsToWebhook: spin up an httptest server, point
-// the alerter at it, dispatch, and verify the JSON shape Slack would
-// receive.
 func TestSlackAlerter_PostsToWebhook(t *testing.T) {
 	var got slackPayload
 	var hits atomic.Int64
@@ -135,9 +121,6 @@ func TestSlackAlerter_PostsToWebhook(t *testing.T) {
 	}
 }
 
-// TestSlackAlerter_EmptyURL_NoOps: if SLACK_WEBHOOK_URL is unset, the
-// alerter does nothing (the registry should have wired in ConsoleAlerter
-// instead, but defensive no-op beats a nil-URL panic).
 func TestSlackAlerter_EmptyURL_NoOps(t *testing.T) {
 	a := NewSlackAlerter("", time.Second)
 	if err := a.Dispatch(context.Background(), wiWith(model.SeverityP1)); err != nil {
@@ -145,11 +128,9 @@ func TestSlackAlerter_EmptyURL_NoOps(t *testing.T) {
 	}
 }
 
-// TestSlackAlerter_HonoursContextTimeout: slow webhook + a tight ctx
-// deadline → return error within budget (not block forever). FR-6.4.
 func TestSlackAlerter_HonoursContextTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(500 * time.Millisecond) // longer than our ctx deadline
+		time.Sleep(500 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
@@ -170,8 +151,6 @@ func TestSlackAlerter_HonoursContextTimeout(t *testing.T) {
 	}
 }
 
-// TestSlackAlerter_NonSuccessStatus_ReturnsError: a 500 from the
-// webhook surfaces as an error.
 func TestSlackAlerter_NonSuccessStatus_ReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

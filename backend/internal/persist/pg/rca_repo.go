@@ -9,26 +9,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// RCARepository is the read-side gateway for the `rca` table. Writes
-// happen inside the workflow engine's transaction (workItemTx.InsertRCA)
-// because they MUST be atomic with the RESOLVED → CLOSED transition.
-// Reads — surfacing the RCA on the incident detail page — happen
-// outside any transaction, which is what this struct handles.
 type RCARepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewRCARepository wires the repo to a live pool.
 func NewRCARepository(pool *pgxpool.Pool) *RCARepository {
 	return &RCARepository{pool: pool}
 }
 
-// GetByWorkItemID returns the RCA attached to the given Work Item, or
-// ErrNotFound if no RCA exists yet (i.e., the WI hasn't been closed).
-// Phase 5's detail page calls this when it sees `status = CLOSED`.
 func (r *RCARepository) GetByWorkItemID(ctx context.Context, workItemID uuid.UUID) (model.RCA, error) {
 	const q = `
 		SELECT id, work_item_id, incident_start, incident_end,

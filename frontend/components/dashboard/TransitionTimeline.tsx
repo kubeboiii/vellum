@@ -1,8 +1,3 @@
-// TransitionTimeline — horizontal timebar representation of an
-// incident's state-transition audit log. Each transition is a tick
-// positioned proportionally between `first_signal_ts` and the
-// right edge (closed_at if closed, else now). Hover for details.
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -22,10 +17,7 @@ interface Props {
 }
 
 export function TransitionTimeline({ work_item, transitions }: Props) {
-  // Right edge: closed_at if known, otherwise "now" — and we want
-  // "now" to update so an open incident's bar grows. Tick a state
-  // every 30s; SSR-safe because we initialise from Date.now() inside
-  // useEffect.
+
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
     setNowMs(Date.now());
@@ -51,9 +43,9 @@ export function TransitionTimeline({ work_item, transitions }: Props) {
         </span>
       </header>
       <div className="relative h-7 w-full overflow-visible">
-        {/* The base bar (background track). */}
+        {}
         <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-sm bg-bg-elevated" />
-        {/* Initial state label (OPEN) at the left edge. */}
+        {}
         <Tick
           label={`OPEN @ start`}
           state={work_item.status === "OPEN" ? "OPEN" : "OPEN"}

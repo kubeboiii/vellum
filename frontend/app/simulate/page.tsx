@@ -1,20 +1,3 @@
-// /simulate — pre-canned failure scenarios. Each scenario fires a
-// short, structured burst of POSTs to /v1/signals so the reviewer
-// can watch the live feed react: debounce collapses noisy signals
-// into incidents, severity propagates through the state machine,
-// alerters spin up async.
-//
-// What this page must prove (and now does):
-//   1. Each scenario actually sends N signals.
-//   2. The backend accepted them (counters: 202 vs 503 vs failed).
-//   3. The debouncer collapsed them into K work items.
-//   4. The user can navigate straight to what just got created.
-//
-// The prior version of this page only showed a transient progress
-// bar; the user had no proof anything had happened. We now keep a
-// per-scenario "lastRun" card with counters and a link into the
-// live feed.
-
 "use client";
 
 import Link from "next/link";
@@ -41,8 +24,6 @@ interface Scenario {
   steps: ScenarioStep[];
 }
 
-// Per-card run result. Mirrors /load-test's counters so the two
-// pages speak the same vocabulary.
 interface RunResult {
   startedAt: number;
   endedAt: number;
@@ -50,18 +31,12 @@ interface RunResult {
   accepted: number;
   rejected: number;
   failed: number;
-  // Work items the backend created for this scenario's components,
-  // looked up after the burst completes.
+
   workItems: WorkItem[];
 }
 
-// Per-window debounce math: each component_id collects at most 100
-// signals per 10-second window before a new work_item opens. So
-// expected incidents per step = ceil(count / 100), summed across
-// the step's components.
 function predictedIncidents(steps: ScenarioStep[]): number {
-  // De-dupe by component_id; sum ceil(count/100) per unique component
-  // — the debouncer key is the component_id (FR-3.1).
+
   const byComp = new Map<string, number>();
   for (const s of steps) {
     byComp.set(s.component_id, (byComp.get(s.component_id) ?? 0) + s.count);
@@ -162,12 +137,11 @@ const SCENARIOS: Scenario[] = [
 export default function SimulatePage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [progress, setProgress] = useState<Record<string, number>>({});
-  // Live counters while a run is in flight, keyed by scenario id.
+
   const [live, setLive] = useState<
     Record<string, { sent: number; accepted: number; rejected: number; failed: number }>
   >({});
-  // Persistent record of the most recent run per scenario. Survives
-  // re-runs by being keyed; we overwrite on each click.
+
   const [lastRun, setLastRun] = useState<Record<string, RunResult>>({});
   const cancelRef = useRef(false);
 
@@ -196,8 +170,7 @@ export default function SimulatePage() {
       let nextAt = performance.now();
       for (let i = 0; i < step.count; i++) {
         if (cancelRef.current) break;
-        // Track accepted/rejected/failed instead of fire-and-forget.
-        // The user paid attention to this run; tell them what happened.
+
         const p = postSignal({
           component_id: step.component_id,
           component_type: step.component_type,
@@ -241,14 +214,10 @@ export default function SimulatePage() {
         if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
       }
     }
-    // Wait for in-flight responses to land before showing the
-    // summary; otherwise counters might still be racing.
+
     await Promise.allSettled(promises);
     const endedAt = performance.now();
 
-    // Look up what the backend actually produced for the components
-    // we touched. listIncidents() returns active (non-CLOSED) items;
-    // a fresh burst's items are always active.
     let workItems: WorkItem[] = [];
     try {
       const components = new Set(sc.steps.map((s) => s.component_id));
@@ -256,17 +225,15 @@ export default function SimulatePage() {
       workItems = data.items.filter(
         (wi) =>
           components.has(wi.component_id) &&
-          // Filter to only ones touched in this run window. We use
-          // last_signal_ts >= startedAt (server-side ISO timestamps
-          // are best-effort comparable to client time; allow 5s slop).
+
           new Date(wi.last_signal_ts).getTime() >= Date.now() - (endedAt - startedAt) - 5000,
       );
     } catch {
-      // If the lookup fails the counters still tell most of the story.
+
     }
 
     const lcur = (i: string) => live[i] ?? { sent: 0, accepted: 0, rejected: 0, failed: 0 };
-    // Snapshot the live counters into the persistent lastRun.
+
     setLive((cur) => {
       const final = cur[sc.id] ?? lcur(sc.id);
       setLastRun((prev) => ({
@@ -346,7 +313,7 @@ export default function SimulatePage() {
                   {sc.blurb}
                 </p>
 
-                {/* Step breakdown */}
+                {}
                 <ul className="mt-3 space-y-1">
                   {sc.steps.map((step, i) => (
                     <li
@@ -363,7 +330,7 @@ export default function SimulatePage() {
                   ))}
                 </ul>
 
-                {/* Live progress bar + counters while running. */}
+                {}
                 {isRunning && liveCounters && (
                   <div className="mt-3 space-y-2">
                     <div className="h-1 overflow-hidden rounded-sm bg-bg-elevated">
@@ -390,7 +357,7 @@ export default function SimulatePage() {
                   </div>
                 )}
 
-                {/* Persistent summary after completion. */}
+                {}
                 {!isRunning && completedRun && (
                   <ResultCard run={completedRun} predicted={predicted} />
                 )}
@@ -438,7 +405,7 @@ function ResultCard({
   const rate = run.sent / Math.max(0.001, (run.endedAt - run.startedAt) / 1000);
   return (
     <div className="mt-3 space-y-2 rounded-sm border border-border-subtle bg-bg-elevated p-2">
-      {/* Counter strip — same vocabulary as /load-test. */}
+      {}
       <div className="flex items-center justify-between font-mono text-meta tabular-nums">
         <span className="text-text-secondary">
           sent <span className="text-text-primary">{run.sent}</span>
@@ -460,7 +427,7 @@ function ResultCard({
         </span>
       </div>
 
-      {/* What got created — direct links to the new work items. */}
+      {}
       {run.workItems.length > 0 && (
         <ul className="space-y-0.5 border-t border-border-subtle pt-2">
           {run.workItems.slice(0, 5).map((wi) => (

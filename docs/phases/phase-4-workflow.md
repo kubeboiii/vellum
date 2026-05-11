@@ -122,7 +122,7 @@ in the registry constructor.
 | Var | Default | Why |
 |---|---|---|
 | `SLACK_WEBHOOK_URL` | (empty) | If set, P1/P2 alerts POST to this URL. Else Console. |
-| `IMS_ALERTER_TIMEOUT` | `5s` | Per-dispatch timeout (FR-6.4) so a slow webhook can't pile up goroutines |
+| `VELLUM_ALERTER_TIMEOUT` | `5s` | Per-dispatch timeout (FR-6.4) so a slow webhook can't pile up goroutines |
 
 ---
 
@@ -150,7 +150,7 @@ in the registry constructor.
    Postgres write succeeds, fire `alerter.ForWorkItem(wi).Dispatch(...)`
    in a `go` block with a 5s timeout context.
 7. **API**: `internal/api/` package with the four new handlers.
-   `cmd/ims/main.go` wires them onto Gin under `/v1`.
+   `cmd/vellum/main.go` wires them onto Gin under `/v1`.
 8. **Tests**: per-package unit + a few end-to-end happy/sad paths
    against testcontainers.
 

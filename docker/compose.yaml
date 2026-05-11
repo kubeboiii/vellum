@@ -12,7 +12,7 @@
 # healthcheck. `docker compose ps` should show all green within ~30s on a
 # warm host (well under the NFR-1 / G6 90s budget in 00-master-prd §7).
 
-name: ims
+name: vellum
 
 services:
   postgres:
@@ -20,12 +20,12 @@ services:
     # (01-architecture §3.2: "one less container and one less driver than
     # running Prometheus"). The `pg16` tag is Postgres 16, matching CLAUDE.md.
     image: timescale/timescaledb:2.17.2-pg16
-    container_name: ims-postgres
+    container_name: vellum-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ims
-      POSTGRES_PASSWORD: ims
-      POSTGRES_DB: ims
+      POSTGRES_USER: vellum
+      POSTGRES_PASSWORD: vellum
+      POSTGRES_DB: vellum
     ports:
       - "5432:5432"
     volumes:
@@ -34,7 +34,7 @@ services:
       # extension on the ims database.
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ims -d ims"]
+      test: ["CMD-SHELL", "pg_isready -U vellum -d vellum"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -42,12 +42,12 @@ services:
 
   mongo:
     image: mongo:7.0.14
-    container_name: ims-mongo
+    container_name: vellum-mongo
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ims
-      MONGO_INITDB_ROOT_PASSWORD: ims
-      MONGO_INITDB_DATABASE: ims
+      MONGO_INITDB_ROOT_USERNAME: vellum
+      MONGO_INITDB_ROOT_PASSWORD: vellum
+      MONGO_INITDB_DATABASE: vellum
     ports:
       - "27017:27017"
     volumes:
@@ -60,9 +60,9 @@ services:
         - mongosh
         - --quiet
         - --username
-        - ims
+        - vellum
         - --password
-        - ims
+        - vellum
         - --authenticationDatabase
         - admin
         - --eval
@@ -74,7 +74,7 @@ services:
 
   redis:
     image: redis:7.4.1-alpine
-    container_name: ims-redis
+    container_name: vellum-redis
     restart: unless-stopped
     # AOF off — debounce state is ephemeral by design (01-architecture §5.5:
     # "if Redis is unavailable, the system degrades to always-CREATED"), so

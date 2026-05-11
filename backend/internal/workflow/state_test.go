@@ -9,11 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// completeRCA builds an RCA that will pass model.RCA.Validate().
-// Used by every "happy path" test below.
 func completeRCA() *model.RCA {
 	r := &model.RCA{
 		WorkItemID:        uuid.New(),
@@ -27,9 +25,6 @@ func completeRCA() *model.RCA {
 	return r
 }
 
-// TestTransitions_HappyPath: walk OPEN → INVESTIGATING → RESOLVED → CLOSED,
-// asserting CanTransitionTo returns nil at each step. This is the
-// "blessed path" the dashboard exercises in Phase 5.
 func TestTransitions_HappyPath(t *testing.T) {
 	open := OpenState{}
 	if err := open.CanTransitionTo(InvestigatingState{}, TransitionContext{}); err != nil {
@@ -48,7 +43,6 @@ func TestTransitions_HappyPath(t *testing.T) {
 	}
 }
 
-// TestTransitions_BackwardRejected: every backward edge must be 409.
 func TestTransitions_BackwardRejected(t *testing.T) {
 	cases := []struct {
 		name string
@@ -72,7 +66,6 @@ func TestTransitions_BackwardRejected(t *testing.T) {
 	}
 }
 
-// TestTransitions_SkipRejected: can't skip stages (e.g., OPEN -> RESOLVED).
 func TestTransitions_SkipRejected(t *testing.T) {
 	cases := []struct {
 		name string
@@ -93,9 +86,6 @@ func TestTransitions_SkipRejected(t *testing.T) {
 	}
 }
 
-// TestRESOLVED_to_CLOSED_NoRCA: the rule (00-master-prd §4.4.5).
-// This is the most-emphasized test in the project; the rubric calls
-// it out explicitly.
 func TestRESOLVED_to_CLOSED_NoRCA(t *testing.T) {
 	err := ResolvedState{}.CanTransitionTo(ClosedState{}, TransitionContext{RCA: nil})
 	if !errors.Is(err, ErrMissingRCA) {
@@ -103,12 +93,10 @@ func TestRESOLVED_to_CLOSED_NoRCA(t *testing.T) {
 	}
 }
 
-// TestRESOLVED_to_CLOSED_IncompleteRCA: validation failure on an RCA
-// returns ErrIncompleteRCA AND lets the handler dig out the field errors.
 func TestRESOLVED_to_CLOSED_IncompleteRCA(t *testing.T) {
 	bad := completeRCA()
-	bad.FixApplied = "too short"  // < 20 chars
-	bad.RootCauseCategory = "WAT" // invalid enum
+	bad.FixApplied = "too short"
+	bad.RootCauseCategory = "WAT"
 
 	err := ResolvedState{}.CanTransitionTo(ClosedState{}, TransitionContext{RCA: bad})
 	if !errors.Is(err, ErrIncompleteRCA) {
@@ -123,12 +111,9 @@ func TestRESOLVED_to_CLOSED_IncompleteRCA(t *testing.T) {
 	}
 }
 
-// TestClosedState_OnEnter_ComputesMTTR: ClosedState.OnEnter is the
-// single place MTTR gets computed (per 01-architecture §7.2). After
-// the call, the WI has MTTR + ClosedAt + IncidentStart + IncidentEnd.
 func TestClosedState_OnEnter_ComputesMTTR(t *testing.T) {
 	wi := &model.WorkItem{}
-	rca := completeRCA() // 1 hour apart
+	rca := completeRCA()
 	err := ClosedState{}.OnEnter(context.Background(), wi, TransitionContext{RCA: rca})
 	if err != nil {
 		t.Fatalf("OnEnter: %v", err)
@@ -147,9 +132,6 @@ func TestClosedState_OnEnter_ComputesMTTR(t *testing.T) {
 	}
 }
 
-// TestClosedState_OnEnter_RejectsMissingRCA: defense in depth. If
-// somehow the engine called OnEnter without an RCA (engine bug), we
-// return an error instead of silently zeroing MTTR.
 func TestClosedState_OnEnter_RejectsMissingRCA(t *testing.T) {
 	wi := &model.WorkItem{}
 	err := ClosedState{}.OnEnter(context.Background(), wi, TransitionContext{})
@@ -158,8 +140,6 @@ func TestClosedState_OnEnter_RejectsMissingRCA(t *testing.T) {
 	}
 }
 
-// TestFromStatus_KnownValues: every documented status string maps to
-// the right State type.
 func TestFromStatus_KnownValues(t *testing.T) {
 	cases := []struct {
 		status model.Status
@@ -182,7 +162,6 @@ func TestFromStatus_KnownValues(t *testing.T) {
 	}
 }
 
-// TestFromStatus_Unknown: corrupt DB → explicit error.
 func TestFromStatus_Unknown(t *testing.T) {
 	_, err := FromStatus("BOGUS")
 	if err == nil {

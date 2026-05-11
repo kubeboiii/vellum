@@ -1,17 +1,3 @@
-// LANDING.md §5.8 — capabilities grid.
-//
-// Six tiles in a 3×2 hairline grid. Each tile is upgraded with:
-//   * A category accent (lime / red / violet) on its label dot
-//   * Big numbers that COUNT UP from 0 to their final value when
-//     the tile enters view (framer-motion's `animate` on a number
-//     state — pure, no extra dep)
-//   * A neon glow on hover, color-keyed to the tile's accent
-//   * A 1px scan-line under each number that animates in from 0%
-//     width when the tile first appears
-//
-// THEME.md §8.4 forbids gradient backgrounds — we use box-shadow
-// "glow" on hover instead, which §4.3 already permits for accents.
-
 "use client";
 
 import { motion, useInView, useReducedMotion } from "framer-motion";
@@ -20,12 +6,7 @@ import { useEffect, useRef, useState } from "react";
 type Accent = "lime" | "red" | "violet";
 
 interface Tile {
-  // numeric is the target value the counter animates UP to.
-  // suffix is the unit shown after the count (e.g. "/sec", "%").
-  // prefix is shown before (e.g. "<").
-  // For "100 → 1" and "4 stores" we have non-numeric targets, so
-  // we let those tiles opt out via `static: true` and provide
-  // `displayNumber` instead.
+
   numeric?: number;
   prefix?: string;
   suffix?: string;
@@ -103,9 +84,6 @@ const ACCENT_TOKEN: Record<
   },
 };
 
-// CountUpNumber animates from 0 to `target` over `durationMs` once
-// it scrolls into view. Static under prefers-reduced-motion (renders
-// the final value immediately).
 function CountUpNumber({
   target,
   prefix = "",
@@ -130,7 +108,7 @@ function CountUpNumber({
     const duration = 900;
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration);
-      // easeOutQuart for a confident "lands hard" feel.
+
       const eased = 1 - Math.pow(1 - t, 4);
       setVal(Math.round(target * eased));
       if (t < 1) raf = requestAnimationFrame(tick);
@@ -157,7 +135,7 @@ function TileEl({ tile }: { tile: Tile }) {
       ref={ref}
       className={`group relative flex min-h-[160px] flex-col bg-bg-surface px-6 py-7 transition-all duration-base ease-out ${a.glow}`}
     >
-      {/* Big number */}
+      {}
       <div
         className={`font-mono text-[32px] font-medium leading-[1.1] tracking-[-0.01em] tabular-nums ${a.number}`}
       >
@@ -173,7 +151,7 @@ function TileEl({ tile }: { tile: Tile }) {
         )}
       </div>
 
-      {/* Scan line under the number — grows from 0% → 24px on first reveal. */}
+      {}
       <motion.div
         className={`mt-2 h-px ${a.scan}`}
         initial={{ width: 0, opacity: 0 }}
@@ -181,7 +159,7 @@ function TileEl({ tile }: { tile: Tile }) {
         transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
       />
 
-      {/* Label with the colored dot. */}
+      {}
       <div className="mt-3 flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${a.dot}`} aria-hidden />
         <span className="font-mono text-label uppercase tracking-[0.05em] text-text-secondary">

@@ -1,25 +1,3 @@
-// LANDING.md §5.5 — how it works.
-//
-// Three stacked regions (SIGNALS → IMS → OUTPUT) presented as a
-// dense, neon-tinted control-panel surface. The visual language is
-// deliberately layered:
-//
-//   * Animated grid-line texture drifting across each region
-//     background — subtle CRT-scanline feel, no gradients (the
-//     stripes are individual hairlines so we stay within §8.4).
-//   * Giant neon stage numerals (01 / 02 / 03) with a glow filter.
-//   * The middle IMS region's accent bar SLIDES up-and-down like a
-//     scanner indicator instead of just pulsing opacity.
-//   * Connector arrows: a lime dot rolls down the line AND the line
-//     itself has a brightness wave running along it.
-//   * Source / output cards: glow on hover, animated severity dot.
-//   * IMS cards: violet neon ring on hover, count-up metric chips
-//     on first reveal, callout starts with a ✦ glyph.
-//   * "System status" header strip at the very top sets the
-//     control-panel tone before the regions even appear.
-//
-// All animations gated on framer-motion's useReducedMotion.
-
 "use client";
 
 import {
@@ -38,8 +16,6 @@ import { motion, useInView, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
 type TablerIcon = typeof IconApi;
-
-// ---- Tech metadata ----
 
 interface CardSpec {
   Icon: TablerIcon;
@@ -96,12 +72,6 @@ const HEADLINE_METRICS = [
   { value: "<2ms", unit: "p99" },
 ];
 
-// =============================================================
-// PRIMITIVES
-// =============================================================
-
-// SystemStatusStrip: thin bar at the top of the section. Looks
-// like the status line of a TUI / control panel.
 function SystemStatusStrip() {
   const reduced = useReducedMotion();
   const [rate, setRate] = useState(8421);
@@ -119,7 +89,7 @@ function SystemStatusStrip() {
     >
       <div className="flex items-center gap-2">
         <span className="block h-3 w-[3px] bg-accent" aria-hidden />
-        <span className="text-text-primary">IMS</span>
+        <span className="text-text-primary">Vellum</span>
         <span className="text-text-tertiary">·</span>
         <span>v1.0</span>
       </div>
@@ -137,9 +107,6 @@ function SystemStatusStrip() {
   );
 }
 
-// GridTexture: a low-opacity grid of hairlines drifting slowly
-// across the region. SVG <pattern> so it scales without raster
-// artefacts. Static under reduced motion.
 function GridTexture({ tone }: { tone: "muted" | "active" }) {
   const reduced = useReducedMotion();
   const stroke =
@@ -190,8 +157,6 @@ function GridTexture({ tone }: { tone: "muted" | "active" }) {
   );
 }
 
-// NeonNumeral: giant glowing stage glyph in the top-right. Uses an
-// SVG filter for the blur halo so it renders on the GPU.
 function NeonNumeral({ value, tone }: { value: string; tone: "muted" | "active" }) {
   const color = tone === "active" ? "var(--accent)" : "var(--text-tertiary)";
   const reduced = useReducedMotion();
@@ -211,7 +176,7 @@ function NeonNumeral({ value, tone }: { value: string; tone: "muted" | "active" 
           <feGaussianBlur stdDeviation="3" />
         </filter>
       </defs>
-      {/* Blurred halo behind the crisp text */}
+      {}
       <motion.text
         x="56"
         y="62"
@@ -233,7 +198,7 @@ function NeonNumeral({ value, tone }: { value: string; tone: "muted" | "active" 
       >
         {value}
       </motion.text>
-      {/* Crisp foreground text */}
+      {}
       <text
         x="56"
         y="62"
@@ -250,9 +215,6 @@ function NeonNumeral({ value, tone }: { value: string; tone: "muted" | "active" 
   );
 }
 
-// AccentScanner: a scanning indicator that replaces the static lime
-// stripe next to the IMS label. A 6px chunk of lime slides up and
-// down inside a 14px track.
 function AccentScanner() {
   const reduced = useReducedMotion();
   return (
@@ -274,14 +236,11 @@ function AccentScanner() {
   );
 }
 
-// MetricChip with a count-up animation on first reveal.
 function MetricChip({ value }: { value: string }) {
   const reduced = useReducedMotion();
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, margin: "-20%" });
 
-  // Detect a leading integer (with optional K/M suffix). Only
-  // numeric chips animate; "100 → 1" and "MTTR auto" stay static.
   const match = value.match(/^(\d+)([KM]?)(.*)$/);
   const target = match ? parseInt(match[1], 10) : null;
   const suffix = match ? `${match[2]}${match[3]}` : "";
@@ -319,8 +278,6 @@ function MetricChip({ value }: { value: string }) {
   );
 }
 
-// ---- Card variants ----
-
 function SourceCard({ Icon, label, sub }: CardSpec) {
   return (
     <motion.div
@@ -328,15 +285,13 @@ function SourceCard({ Icon, label, sub }: CardSpec) {
       transition={{ duration: 0.2 }}
       className="group flex items-start gap-3 rounded-md border border-border-subtle bg-bg-base/80 px-5 py-4 transition-all duration-base hover:border-border-strong hover:shadow-[0_0_24px_-10px_var(--accent-glow)]"
     >
-      {/* Icon sits at the top, fixed-size, never shrinks under
-          flex pressure (shrink-0). The mt aligns its visual baseline
-          with the label text on the right. */}
+      {}
       <Icon
         size={14}
         className="mt-1 shrink-0 text-text-secondary transition-colors group-hover:text-accent"
         aria-hidden
       />
-      {/* min-w-0 so flex children can shrink and `truncate` works. */}
+      {}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-mono text-data uppercase tracking-[0.04em] text-text-primary">
@@ -347,10 +302,7 @@ function SourceCard({ Icon, label, sub }: CardSpec) {
             aria-hidden
           />
         </div>
-        {/* whitespace-nowrap + overflow-hidden + text-ellipsis so
-            longer sub-labels stay on one line. Padding on the parent
-            (px-5) gives the text room to breathe from the card's
-            rounded corners. */}
+        {}
         <div className="mt-1.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-text-tertiary">
           {sub}
         </div>
@@ -391,9 +343,6 @@ function IMSCard({ Icon, label, sub, metric, callout }: IMSCardSpec) {
   );
 }
 
-// ---- Flow arrows ----
-
-// FlowArrow: vertical line between regions. Brightness wave + dot.
 function FlowArrow() {
   const reduced = useReducedMotion();
   return (
@@ -401,9 +350,7 @@ function FlowArrow() {
       <div className="h-full w-px bg-accent/30" aria-hidden />
       {!reduced && (
         <>
-          {/* Brightness wave: a 24px-tall solid-accent stripe slides
-              down the line, making the line look like it's
-              "alive". */}
+          {}
           <motion.div
             className="absolute left-1/2 h-6 w-px -translate-x-1/2 bg-accent"
             initial={{ top: "-25%" }}
@@ -411,7 +358,7 @@ function FlowArrow() {
             transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
             aria-hidden
           />
-          {/* Traveling glowing dot. */}
+          {}
           <motion.div
             className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-accent shadow-[0_0_8px_var(--accent-glow)]"
             initial={{ top: 0, opacity: 0 }}
@@ -439,7 +386,6 @@ function FlowArrow() {
   );
 }
 
-// MiniFlowArrow: same pattern, shorter — between IMS cards.
 function MiniFlowArrow() {
   const reduced = useReducedMotion();
   return (
@@ -467,8 +413,6 @@ function MiniFlowArrow() {
   );
 }
 
-// ---- Region container ----
-
 interface RegionProps {
   stage: string;
   label: string;
@@ -491,13 +435,13 @@ function Region({ stage, label, subtitle, variant, children }: RegionProps) {
           : "border-border-subtle bg-bg-surface"
       }`}
     >
-      {/* Drifting grid texture in the background. */}
+      {}
       <GridTexture tone={variant} />
 
-      {/* Giant neon stage numeral, top-right. */}
+      {}
       <NeonNumeral value={stage} tone={variant} />
 
-      {/* Header */}
+      {}
       <header className="relative mb-8 flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
           {isActive ? (
@@ -521,15 +465,11 @@ function Region({ stage, label, subtitle, variant, children }: RegionProps) {
         </span>
       </header>
 
-      {/* Content above the grid texture. */}
+      {}
       <div className="relative">{children}</div>
     </motion.div>
   );
 }
-
-// =============================================================
-// SECTION
-// =============================================================
 
 export function HowItWorks() {
   return (
@@ -579,7 +519,7 @@ export function HowItWorks() {
 
         <Region
           stage="02"
-          label="IMS"
+          label="Vellum"
           subtitle="Atomic debounce, transactional workflow, mandatory RCA"
           variant="active"
         >

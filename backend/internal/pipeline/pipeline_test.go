@@ -7,16 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// TestSubmit_AcceptUntilFull confirms a non-blocking submit returns true
-// exactly `capacity` times when no workers are draining, then flips to
-// false forever after. This is the core backpressure contract (FR-1.5).
 func TestSubmit_AcceptUntilFull(t *testing.T) {
 	p := New(Config{Capacity: 4, Workers: 0, ShutdownTimeout: time.Second},
 		func(ctx context.Context, _ model.Signal) error { return nil })
-	// NOTE: Workers=0 means no consumers, so the queue truly fills.
 
 	for i := 0; i < 4; i++ {
 		if !p.Submit(model.Signal{}) {
@@ -32,11 +28,6 @@ func TestSubmit_AcceptUntilFull(t *testing.T) {
 	}
 }
 
-// TestPipeline_EveryAcceptedIsProcessed: under concurrent submission,
-// every accept must eventually be processed (no silent loss between
-// channel receive and processor invocation). We use a generous queue so
-// accepts dominate, but the invariant — Accepted == Processed at Stop —
-// must hold even if some submits are dropped.
 func TestPipeline_EveryAcceptedIsProcessed(t *testing.T) {
 	var processed atomic.Uint64
 	p := New(Config{Capacity: 8192, Workers: 4, ShutdownTimeout: time.Second},
@@ -71,13 +62,10 @@ func TestPipeline_EveryAcceptedIsProcessed(t *testing.T) {
 	}
 }
 
-// TestPipeline_AcceptedPlusDroppedEqualsTotal — the invariant that proves
-// we never double-count nor silently lose. Use a tiny capacity so dropping
-// is common.
 func TestPipeline_AcceptedPlusDroppedEqualsTotal(t *testing.T) {
 	p := New(Config{Capacity: 8, Workers: 2, ShutdownTimeout: time.Second},
 		func(ctx context.Context, _ model.Signal) error {
-			// add a teensy delay so the queue actually saturates
+
 			time.Sleep(50 * time.Microsecond)
 			return nil
 		})
@@ -105,12 +93,10 @@ func TestPipeline_AcceptedPlusDroppedEqualsTotal(t *testing.T) {
 	}
 }
 
-// TestPipeline_StopIsIdempotent: defensive — main.go's signal handler may
-// call Stop more than once if shutdown is messy.
 func TestPipeline_StopIsIdempotent(t *testing.T) {
 	p := New(Config{Capacity: 4, Workers: 1, ShutdownTimeout: 100 * time.Millisecond},
 		func(ctx context.Context, _ model.Signal) error { return nil })
 	p.Start(context.Background())
 	p.Stop()
-	p.Stop() // must not panic on double-close
+	p.Stop()
 }

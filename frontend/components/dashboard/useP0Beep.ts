@@ -1,10 +1,3 @@
-// useP0Beep — fires a short Web Audio beep when a new P0 incident
-// appears in the polled `items` list, IF the user has unmuted.
-//
-// Why no MP3 asset: keeps the bundle small and avoids autoplay
-// gotchas; the AudioContext is created lazily on the first beep,
-// after a user gesture (their click on the mute toggle counts).
-
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -20,8 +13,6 @@ export function useP0Beep(items: WorkItem[], muted: boolean) {
       items.filter((i) => i.severity === "P0").map((i) => i.id),
     );
 
-    // First poll: snapshot, don't beep. Otherwise the page would
-    // wail on every fresh load.
     if (knownP0Ids.current === null) {
       knownP0Ids.current = currentP0;
       return;
@@ -35,9 +26,6 @@ export function useP0Beep(items: WorkItem[], muted: boolean) {
     if (muted || novel.length === 0) return;
     if (typeof window === "undefined") return;
 
-    // Lazy-create the AudioContext on first beep. Some browsers
-    // block ctx creation until a user gesture; the user already
-    // clicked "unmute" before we get here.
     try {
       if (!ctxRef.current) {
         const Ctor =
@@ -52,7 +40,7 @@ export function useP0Beep(items: WorkItem[], muted: boolean) {
       const gain = ctx.createGain();
       osc.type = "square";
       osc.frequency.value = 880;
-      // Quick attack, 120ms decay — short enough not to annoy.
+
       gain.gain.setValueAtTime(0.0001, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
       gain.gain.exponentialRampToValueAtTime(
@@ -63,11 +51,10 @@ export function useP0Beep(items: WorkItem[], muted: boolean) {
       osc.start();
       osc.stop(ctx.currentTime + 0.13);
     } catch {
-      // Audio unsupported / blocked — silently ignore.
+
     }
   }, [items, muted]);
 
-  // Cleanup on unmount.
   useEffect(() => {
     return () => {
       ctxRef.current?.close().catch(() => {});

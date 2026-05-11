@@ -1,10 +1,3 @@
-// scripts/grpc-client.go — tiny client that streams N signals via
-// gRPC and prints the acks. Used by the Phase 5 acceptance demo to
-// prove the gRPC path is wired end-to-end.
-//
-// Usage:
-//   cd backend && go run ../scripts/grpc-client.go --target localhost:9090 --n 10 --component DEMO_GRPC
-
 //go:build phase5demo
 
 package main
@@ -45,7 +38,6 @@ func main() {
 		log.Fatalf("open stream: %v", err)
 	}
 
-	// Async ack reader.
 	acks := make(chan *imsv1.Ack, *n)
 	go func() {
 		defer close(acks)

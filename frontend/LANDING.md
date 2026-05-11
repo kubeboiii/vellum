@@ -14,7 +14,7 @@ It exists because reviewers, recruiters, and hiring managers will land at `/` fi
 
 Goals, in order:
 
-1. **In 5 seconds**: tell the visitor what the IMS is and that it's serious.
+1. **In 5 seconds**: tell the visitor what the Vellum is and that it's serious.
 2. **In 30 seconds**: convince them the engineering inside is good enough to investigate.
 3. **In 2 minutes**: get them to click through to `/dashboard` and see the product live.
 
@@ -102,7 +102,7 @@ The landing page is one continuous scroll, organized as nine sections in this ex
 1. **Nav** — fixed, transparent on scroll-top, becomes `--bg-surface` with hairline border on scroll-down
 2. **Hero** — headline, subhead, two CTAs, ambient terminal-style background
 3. **The problem strip** — short bridge: "production breaks. signals drown you. you need a way to triage."
-4. **Before / after comparison** — paired dark cards, problem state vs IMS state (image 2 pattern)
+4. **Before / after comparison** — paired dark cards, problem state vs Vellum state (image 2 pattern)
 5. **How it works** — vertical flow with mono section labels (image 3 pattern)
 6. **Architecture pattern cards** — three cards with mini-diagrams: ingestion, debounce, workflow (image 7 pattern)
 7. **Live code tabs** — interactive tabs showing real code snippets from the actual repo (image 5 pattern)
@@ -122,13 +122,13 @@ These are the canonical patterns. Each section maps to a numbered subsection her
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ ▎IMS   PRODUCT   ARCHITECTURE   GITHUB ↗                  Open ›   │
+│ ▎Vellum   PRODUCT   ARCHITECTURE   GITHUB ↗                  Open ›   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 Spec:
 - Height **56px**
-- Logo: `▎IMS` — lime vertical bar (3px wide, 18px tall) + wordmark in 14px sans 500
+- Logo: `▎Vellum` — lime vertical bar (3px wide, 18px tall) + wordmark in 14px sans 500
 - Center links: 13px mono uppercase, `--text-secondary`, hover → `--text-primary`, no underline
 - Right CTA: ghost button `Open ›` linking to `/dashboard`. Ghost = transparent bg, 1px `--border-subtle`, hover `--bg-elevated`
 - Default state: transparent background, no border. On scroll > 24px: background becomes `--bg-surface`, bottom border `--divider`, 200ms ease-out transition
@@ -192,7 +192,7 @@ Spec:
 - Max-width 720px centered
 - Single `<p>` element, 22–24px sans regular, line-height 1.45, color `--text-primary` for the main idea, `--text-secondary` for connectives
 - Example copy structure (Claude, write actual copy in the same shape):
-  > **Production breaks.** Errors arrive by the thousand from APIs, caches, queues, databases. **You can't read them. You can't sort them. You can't even keep up.** The IMS turns that flood into a small, structured list of incidents your team can actually work.
+  > **Production breaks.** Errors arrive by the thousand from APIs, caches, queues, databases. **You can't read them. You can't sort them. You can't even keep up.** The Vellum turns that flood into a small, structured list of incidents your team can actually work.
 - **Bold** spans use weight 500 (not 600).
 - No card, no border, no surface — sits naked on the page background.
 
@@ -202,7 +202,7 @@ The Qovery before/after pattern. Two cards side-by-side at desktop, stacked on m
 
 ```
 ┌──────────────────────────────────┐  ┌──────────────────────────────────┐
-│ ● WITHOUT AN IMS                 │  │ ● WITH THE IMS                   │  ← mono labels
+│ ● WITHOUT AN Vellum                 │  │ ● WITH THE Vellum                   │  ← mono labels
 │                                  │  │                                  │     left: red dot
 │   [SRE] ←──── [API errors]       │  │   [Signals]                      │     right: lime dot
 │      ←─────── [Cache failures]   │  │       │                          │
@@ -244,7 +244,7 @@ The Qovery vertical-flow pattern. Three labeled regions stacked vertically, with
 └─────────────────────────────────────────────────────────────────┘
                               ↓                                      ← lime arrow
 ┌─────────────────────────────────────────────────────────────────┐
-│ ▎ IMS  Every signal is debounced, every incident is tracked     │ ← lime bg tint
+│ ▎ Vellum  Every signal is debounced, every incident is tracked     │ ← lime bg tint
 │                                                                  │     accent-bg
 │                  ┌──────────────────┐                            │
 │                  │  Ingestion API   │                            │
@@ -272,7 +272,7 @@ The Qovery vertical-flow pattern. Three labeled regions stacked vertically, with
 
 - Each region is a full-width container, `padding: 48px 32px`
 - **Top and bottom regions**: bg `--bg-surface`, 1px `--border-subtle`, radius-lg, color `--text-secondary` for the label
-- **Middle region**: bg `--accent-bg` (deep lime wash), 1px `--accent-border`, radius-lg, label includes the lime `▎` accent bar prefix and text in `--accent` for "IMS" (just that word), rest of label text in `--text-secondary`
+- **Middle region**: bg `--accent-bg` (deep lime wash), 1px `--accent-border`, radius-lg, label includes the lime `▎` accent bar prefix and text in `--accent` for "Vellum" (just that word), rest of label text in `--text-secondary`
 - Region label: 11px mono uppercase tracking 0.05em + a 14px sans regular sentence after it, separated by 16px
 - Inside top/bottom regions: row of small cards in a 4-column grid, `gap: 12px`. Each card 1px `--border-subtle`, radius-md, padding `12px 16px`, label centered, 13px mono. Icons from Tabler 16px, color `--text-secondary`, to the left of the label.
 - Inside middle region: vertical stack of 3 nodes centered, max-width 320px, each node a card identical to the side cards above but a bit larger (`padding: 16px 24px`)
@@ -358,11 +358,11 @@ Interactive tabs above a real code block (left) with a prose explanation (right)
 - Tab content changes instantly (no fade). Tabs are keyboard-navigable (arrow keys, enter to activate).
 - This is the strongest credibility-building section. Get it right.
 
-**Custom Shiki theme tokens** (drop into a `themes/ims-dark.json` and pass to Shiki):
+**Custom Shiki theme tokens** (drop into a `themes/vellum-dark.json` and pass to Shiki):
 
 ```json
 {
-  "name": "ims-dark",
+  "name": "vellum-dark",
   "type": "dark",
   "colors": { "editor.background": "#0A0A0A", "editor.foreground": "#FAFAFA" },
   "tokenColors": [
@@ -457,7 +457,7 @@ Three columns, minimal, sits below the closing card on `--bg-base`.
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                                                                      │
-│   ▎IMS                  PROJECT              LINKS                   │
+│   ▎Vellum                  PROJECT              LINKS                   │
 │   Incident Management   README                GitHub ↗               │
 │   System.                Architecture         Demo video ↗           │
 │                          Decisions log        License                │
@@ -506,7 +506,7 @@ Hand-drawn means **slightly imperfect**. Use a quadratic or cubic Bézier curve,
 //
 // Three variants are enough for the whole page:
 //   loop-down  → for hero, curves from label down to CTA
-//   curl-right → for how-it-works, curls from label across to the IMS box
+//   curl-right → for how-it-works, curls from label across to the Vellum box
 //   wiggle     → for capabilities grid (optional 3rd annotation, but use sparingly)
 //
 // Each is a <svg> with viewBox sized to its purpose, a single <path>, and
@@ -533,7 +533,7 @@ Two important details:
 - Approx width 220px, height 80px
 
 **How-it-works annotation:**
-- Position: absolutely positioned 16px to the right of the middle "▎ IMS" region label
+- Position: absolutely positioned 16px to the right of the middle "▎ Vellum" region label
 - Text: *"this is the part you built"* (you can adjust the copy — the point is to call out the active region)
 - Arrow: variant `curl-right`, curls from text down-left into the middle region
 - Approx width 240px, height 60px

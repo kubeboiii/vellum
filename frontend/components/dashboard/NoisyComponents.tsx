@@ -1,8 +1,3 @@
-// NoisyComponents — top-5 components by signal_count across the
-// current set of active incidents. Each row is a horizontal bar
-// proportional to the count, colored by the incident's severity,
-// linking to /incidents/{id}.
-
 "use client";
 
 import Link from "next/link";
@@ -21,7 +16,7 @@ interface Props {
 }
 
 export function NoisyComponents({ items }: Props) {
-  // Sort by signal_count desc, take top 5.
+
   const top = [...items]
     .sort((a, b) => b.signal_count - a.signal_count)
     .slice(0, 5);

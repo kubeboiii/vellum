@@ -14,7 +14,7 @@ sharing the existing in-process pipeline) and the **Next.js dashboard**
 (live feed, incident detail, RCA form) so an SRE can actually triage
 incidents in a browser.
 
-After Phase 5: `docker compose up && go run ./cmd/ims && pnpm dev` →
+After Phase 5: `docker compose up && go run ./cmd/vellum && pnpm dev` →
 a working triage UI at `localhost:3000` reading from the same backend
 that's accepting signals on HTTP and gRPC.
 
@@ -43,7 +43,7 @@ that's accepting signals on HTTP and gRPC.
 | `internal/ingest/grpc.go` | gRPC `SignalServiceServer` implementation. Same `pipeline.Submitter` contract as the HTTP handler. |
 | `internal/api/signals.go` | NEW handler: `GET /v1/incidents/:id/signals` returns paginated raw signals from Mongo (powers Phase 5 detail page, FR-7.2). |
 | `internal/persist/mongo/signal_repo.go` | Add `ListByWorkItem(ctx, wiID, page, perPage)` reader. |
-| `cmd/ims/main.go` | Start the gRPC listener on `:9090` alongside the HTTP listener. Both shutdown gracefully. Add CORS middleware so localhost:3000 can call the API in dev. |
+| `cmd/vellum/main.go` | Start the gRPC listener on `:9090` alongside the HTTP listener. Both shutdown gracefully. Add CORS middleware so localhost:3000 can call the API in dev. |
 
 **No new Go runtime deps** other than `google.golang.org/grpc` and
 `google.golang.org/protobuf` (already pulled by the proto stubs).
@@ -106,8 +106,8 @@ shared pipeline, return `REJECTED_QUEUE_FULL` when the channel is full.
 
 | Var | Default | Why |
 |---|---|---|
-| `IMS_GRPC_ADDR` | `:9090` | gRPC bind address (01-arch §3.1) |
-| `IMS_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins for the dashboard. Dev-only — production would gate via a proxy. |
+| `VELLUM_GRPC_ADDR` | `:9090` | gRPC bind address (01-arch §3.1) |
+| `VELLUM_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins for the dashboard. Dev-only — production would gate via a proxy. |
 | `NEXT_PUBLIC_API_BASE` | `http://localhost:8080` | Frontend → backend URL. `NEXT_PUBLIC_` prefix exposes it to the browser bundle. |
 
 ---
@@ -116,7 +116,7 @@ shared pipeline, return `REJECTED_QUEUE_FULL` when the channel is full.
 
 1. `backend/proto/signals.proto` + `backend/buf.yaml` + `backend/buf.gen.yaml`. Run `buf generate` and check the output into `backend/proto/`.
 2. `internal/ingest/grpc.go` implementing `SignalServiceServer.IngestSignals`. Unit test with `bufconn` (in-memory gRPC) so we don't need a real port.
-3. `cmd/ims/main.go`: start the gRPC server alongside HTTP. Add CORS middleware (`gin-contrib/cors`).
+3. `cmd/vellum/main.go`: start the gRPC server alongside HTTP. Add CORS middleware (`gin-contrib/cors`).
 4. `internal/persist/mongo/signal_repo.go`: `ListByWorkItem(ctx, wiID, page, perPage)`. Testcontainers test.
 5. `internal/api/signals.go`: `GET /v1/incidents/:id/signals` handler.
 6. `frontend`: shadcn init + add `button card badge input textarea select table`. Hand-roll the typed API client.
@@ -175,7 +175,7 @@ After Phase 5, be able to explain unaided:
 2. What's a Server Component vs Client Component in Next.js App Router, and when do you use which?
 3. Why is the live feed Client-side polling, not SSR with revalidate?
 4. What does `'use client'` actually do at runtime?
-5. Why is `IMS_CORS_ORIGINS` only an issue for local dev?
+5. Why is `VELLUM_CORS_ORIGINS` only an issue for local dev?
 6. Walk through what `bufconn` is and why we use it in the gRPC test.
 7. How does the dashboard handle a 422 from `POST /rca`? Where does the field-error mapping live (client side mirror of `model.RCA.Validate`)?
 8. Why is the proto's `payload` a `bytes` field, not a `google.protobuf.Struct`?

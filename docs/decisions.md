@@ -10,7 +10,7 @@
 
 ## 2026-05-11 — Tech stack: Go + Postgres + Mongo + Redis + TimescaleDB + Next.js
 
-**Context:** Need to pick stack for high-throughput IMS in a 7-day window.
+**Context:** Need to pick stack for high-throughput Vellum in a 7-day window.
 
 **Decision:** Go for backend, Gin for HTTP, gRPC for streaming, Postgres for transactional, MongoDB for audit log, Redis for cache + debounce, TimescaleDB (as Postgres extension) for timeseries, Next.js 14 for frontend, Docker Compose for orchestration.
 
@@ -119,7 +119,7 @@
 - HTTP only — simpler, but misses a chance to demonstrate gRPC.
 - gRPC only — harder to manually test, no curl, frontend would need grpc-web.
 
-**Impact:** Run two listeners (ports 8080 HTTP, 9090 gRPC) in `cmd/ims/main.go`.
+**Impact:** Run two listeners (ports 8080 HTTP, 9090 gRPC) in `cmd/vellum/main.go`.
 
 ---
 
@@ -191,7 +191,7 @@
 
 **Context:** The bounded channel between handlers and workers needs two numbers — its depth and the size of the consumer pool. Both are tunables, both affect the load-test outcome.
 
-**Decision:** Default queue capacity 50,000 (5 seconds of nominal at 10K/sec). Default worker count `runtime.NumCPU() * 2` (on this 10-core M-series box = 20 workers). Both are env-overridable (`IMS_QUEUE_CAPACITY`, `IMS_WORKER_COUNT`).
+**Decision:** Default queue capacity 50,000 (5 seconds of nominal at 10K/sec). Default worker count `runtime.NumCPU() * 2` (on this 10-core M-series box = 20 workers). Both are env-overridable (`VELLUM_QUEUE_CAPACITY`, `VELLUM_WORKER_COUNT`).
 
 **Why:** Capacity follows 01-arch §4.2 directly — enough buffer to absorb a 5-second persistence stall without immediate 503s, small enough to keep memory bounded (~20MB for 50K Signal structs). `NumCPU()*2` is the standard I/O-bound oversubscription heuristic (01-arch §4.3); workers spend most of their time waiting on Redis/Postgres/Mongo, so packing more goroutines per core is correct.
 
@@ -204,11 +204,11 @@
 
 ---
 
-## 2026-05-11 — Phase 2: load test bumps `IMS_RATE_LIMIT_RPS` to 20,000
+## 2026-05-11 — Phase 2: load test bumps `VELLUM_RATE_LIMIT_RPS` to 20,000
 
 **Context:** Default per-source rate limit is 1000 req/sec (FR-1.6). Vegeta runs from a single host, so every test request hits the same source IP (127.0.0.1) and would 429 immediately.
 
-**Decision:** `scripts/load-test.sh` boots (or expects the caller to boot) the backend with `IMS_RATE_LIMIT_RPS=20000 IMS_RATE_LIMIT_BURST=40000`. The limiter is still in the request path — we just configure it so a single-host test isn't bottlenecked by it.
+**Decision:** `scripts/load-test.sh` boots (or expects the caller to boot) the backend with `VELLUM_RATE_LIMIT_RPS=20000 VELLUM_RATE_LIMIT_BURST=40000`. The limiter is still in the request path — we just configure it so a single-host test isn't bottlenecked by it.
 
 **Why:** The rate limiter's job is to protect the system from one chatty source (FR-1.6 says "default 1000/sec per source"). For a single-host benchmark, treating localhost as a "fleet" reflects what the production constraint actually does: rate-limit per source IP, not globally. Globally, the system is sized for 10K/sec aggregate (NFR-1.1).
 
@@ -225,7 +225,7 @@
 
 **Context:** On SIGINT we need to drain in-flight HTTP requests AND in-flight queue items. If we close the pipeline first, in-flight handlers panic on a send to a closed channel.
 
-**Decision:** Sequential shutdown in `cmd/ims/main.go`: (1) `srv.Shutdown(ctx)` blocks until HTTP handlers return; (2) `pipe.Stop()` then closes the input channel and drains workers; (3) wait on `pipe.Done()`. Total budget bounded by `IMS_SHUTDOWN_TIMEOUT` (default 30s, matches NFR-2.4).
+**Decision:** Sequential shutdown in `cmd/vellum/main.go`: (1) `srv.Shutdown(ctx)` blocks until HTTP handlers return; (2) `pipe.Stop()` then closes the input channel and drains workers; (3) wait on `pipe.Done()`. Total budget bounded by `VELLUM_SHUTDOWN_TIMEOUT` (default 30s, matches NFR-2.4).
 
 **Why:** It's the only ordering that's race-free without adding a separate "draining" flag readable by the handler. Once `srv.Shutdown` returns, no goroutine can be inside `Submit`, so closing the channel is safe.
 
@@ -265,7 +265,7 @@
 - Embed migrate as a Go library and call `Migrate.Up()` at startup — convenient for dev but the app then needs DDL permissions, and "did this restart succeed" gets murky.
 - Put all DDL in `docker/postgres/init.sql` — works but no versioning, no rollback, no idempotency tracking once the dev volume sticks.
 
-**Impact:** README quick-start adds `migrate -path backend/migrations -database "$DATABASE_URL" up` between `docker compose up` and `go run ./cmd/ims`. Anyone joining the project needs `brew install golang-migrate`.
+**Impact:** README quick-start adds `migrate -path backend/migrations -database "$DATABASE_URL" up` between `docker compose up` and `go run ./cmd/vellum`. Anyone joining the project needs `brew install golang-migrate`.
 
 ---
 
@@ -286,7 +286,7 @@
 
 ## 2026-05-11 — Phase 3: `*redis.Script.Run` instead of raw EVALSHA for the debouncer
 
-**Context:** First implementation called `client.EvalSha(ctx, sha, ...)` directly with the SHA from startup's `SCRIPT LOAD`. Problem: when Redis restarts (or FLUSHDB is invoked), the script cache is empty. Every subsequent EVALSHA returns `NOSCRIPT` and falls into our "Redis-down" fallback path — even though Redis is actually reachable. The system would permanently lose debouncing after any Redis restart until the IMS backend was also restarted.
+**Context:** First implementation called `client.EvalSha(ctx, sha, ...)` directly with the SHA from startup's `SCRIPT LOAD`. Problem: when Redis restarts (or FLUSHDB is invoked), the script cache is empty. Every subsequent EVALSHA returns `NOSCRIPT` and falls into our "Redis-down" fallback path — even though Redis is actually reachable. The system would permanently lose debouncing after any Redis restart until the Vellum backend was also restarted.
 
 **Decision:** Use go-redis's `*redis.Script.Run` helper. It calls EVALSHA on the cached SHA (fast path); on `NOSCRIPT`, it automatically re-uploads the script body via EVAL and retries the call.
 
@@ -462,11 +462,11 @@
 
 ---
 
-## 2026-05-11 — Phase 5: proto laid out as `proto/ims/v1/signals.proto`
+## 2026-05-11 — Phase 5: proto laid out as `proto/vellum/v1/signals.proto`
 
 **Context:** buf's STANDARD lint rule requires `package ims.v1` to live in directory `ims/v1` relative to the proto root. We hit the warning on first generate.
 
-**Decision:** Restructure: `backend/proto/ims/v1/signals.proto`. `go_package` is `github.com/kubeboiii/ims/proto/ims/v1;imsv1`. Generated stubs land alongside the .proto.
+**Decision:** Restructure: `backend/proto/vellum/v1/signals.proto`. `go_package` is `github.com/kubeboiii/ims/proto/vellum/v1;imsv1`. Generated stubs land alongside the .proto.
 
 **Why:** Buf's "package = directory" convention is the canonical layout. Future protos (e.g. `ims.v1.WorkflowService`) get their own file under `ims/v1/`; a hypothetical `ims/v2/...` migration becomes a sibling directory.
 
@@ -624,7 +624,7 @@ TEMPLATE for new entries — copy and fill in:
 
 ## 2026-05-11 — Phase 7: Mermaid over PNG for architecture diagrams
 **Context:** The PRD §13 calls for an architecture diagram. The repo had ASCII diagrams in `docs/01-architecture.md` §2 and §3.
-**Decision:** Replaced the ASCII with Mermaid diagrams. GitHub renders Mermaid inline; the source is text so it diff-able in git; no image file to keep in sync. Two diagrams: system context (producers → IMS → consumers) and runtime topology (backend with all internal stages + the four data stores).
+**Decision:** Replaced the ASCII with Mermaid diagrams. GitHub renders Mermaid inline; the source is text so it diff-able in git; no image file to keep in sync. Two diagrams: system context (producers → Vellum → consumers) and runtime topology (backend with all internal stages + the four data stores).
 **Why:** Diagrams that live in code never go stale alongside the code. PNG/SVG exports from design tools need re-rendering and someone usually forgets.
 **Alternatives considered:** Lucidchart export to PNG (better layout, harder to update); D2 (newer text-to-diagram syntax, less universally rendered).
 **Impact:** A copy of the high-level pipeline diagram sits at the top of the README so the elevator pitch is visual on first scroll.
@@ -643,6 +643,29 @@ TEMPLATE for new entries — copy and fill in:
 
 ## 2026-05-11 — Phase 7: `.env.example` audited against `os.LookupEnv` calls
 **Context:** Pre-Phase-7 `.env.example` had 4 variables. The backend actually reads 18.
-**Decision:** Expanded `.env.example` to cover every `envOr` / `envInt` / `envFloat` / `envDur` call in `cmd/ims/main.go`, plus the `IMS_BASE_URL` consumed by the integration test. Grouped them by subsystem with FR references.
+**Decision:** Expanded `.env.example` to cover every `envOr` / `envInt` / `envFloat` / `envDur` call in `cmd/vellum/main.go`, plus the `VELLUM_BASE_URL` consumed by the integration test. Grouped them by subsystem with FR references.
 **Why:** A reviewer who hits a config issue on day one should find the answer in `.env.example`, not by grepping the source.
 **Impact:** `.env.example` is now an exhaustive, documented reference; every variable has its default value shown.
+
+## 2026-05-11 — Renamed project from "IMS" to "Vellum"
+**Context:** Post-Phase-7, the project needed a real brand name. "IMS" (Incident Management System) is descriptive but generic. "Vellum" — the calligraphy material, a callback to the deliberate-craftsmanship vibe of the dashboard's matte-black/lime/serif-italic design language.
+**Decision:** Full rename across all layers:
+- Go module path `github.com/kubeboiii/ims → github.com/kubeboiii/vellum`
+- Proto package `ims.v1 → vellum.v1`, directory `proto/ims → proto/vellum`, stubs regenerated
+- Binary `cmd/ims/ → cmd/vellum/`
+- Env var prefix `IMS_* → VELLUM_*` (15 variables)
+- Docker container names `ims-* → vellum-*`
+- Database name + user + password `ims → vellum` (volumes dropped, recreated, migrations re-applied)
+- localStorage key `ims.persona → vellum.persona`
+- Shiki theme name `ims-dark → vellum-dark`, file renamed accordingly
+- All GitHub URL references throughout frontend
+- All `/var/log/ims/` log-tape strings
+- All human-facing prose across README, docs/, project-notes/, STATE.md, CLAUDE.md
+**Why:** A reviewer reading the repo should see one consistent brand. Cosmetic-only would have left "Vellum" stamped on top of a system that internally calls itself IMS — a smell.
+**What we LEFT as-is:**
+- Historical decisions.md entries describing the original `package ims.v1` choice (those describe what was true at the time; rewriting history would be dishonest)
+- Domain terms: `signal`, `work_item`, `incident`, `state_transitions`, `rca` (these are functional, not brand)
+- Mongo collections + Postgres tables (operational; renaming would break migrations and require data migration)
+- The wire-format service path inside generated `.pb.go` files updated automatically by re-running `buf generate`
+**Verification:** `docker compose down -v && up`, migrations re-applied, `go test -race ./...` clean across 14 packages, `pnpm build` clean across 11 routes, all 9 frontend routes 200, page title and dashboard nav both show "Vellum", end-to-end signal-to-work_item flow works.
+**Impact:** GitHub repo rename `kubeboiii/ims → kubeboiii/vellum` is a separate manual step on the GitHub side. GitHub auto-redirects from the old URL for 6 months; all existing PR links continue to work.

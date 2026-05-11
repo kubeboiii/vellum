@@ -14,25 +14,17 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/kubeboiii/ims/internal/model"
-	imsv1 "github.com/kubeboiii/ims/proto/ims/v1"
+	"github.com/kubeboiii/vellum/internal/model"
+	vellumv1 "github.com/kubeboiii/vellum/proto/vellum/v1"
 )
 
-// startGRPC spins up the SignalService over an in-memory bufconn
-// listener. Returns a connected client and the underlying submitter
-// (so tests can assert on what was enqueued). Cleans up on test end.
-//
-// We use bufconn rather than a real TCP port because:
-//   - No port allocation, no port collisions in parallel tests.
-//   - No network stack — calls are basically goroutine handoffs,
-//     so a "5000-signals-in-50ms" test isn't flaky on CI.
-func startGRPC(t *testing.T, pipe Submitter) imsv1.SignalServiceClient {
+func startGRPC(t *testing.T, pipe Submitter) vellumv1.SignalServiceClient {
 	t.Helper()
 	const bufSize = 1024 * 1024
 	lis := bufconn.Listen(bufSize)
 
 	srv := grpc.NewServer()
-	imsv1.RegisterSignalServiceServer(srv, NewSignalServiceServer(pipe))
+	vellumv1.RegisterSignalServiceServer(srv, NewSignalServiceServer(pipe))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 
@@ -47,12 +39,9 @@ func startGRPC(t *testing.T, pipe Submitter) imsv1.SignalServiceClient {
 		t.Fatalf("grpc dial: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	return imsv1.NewSignalServiceClient(conn)
+	return vellumv1.NewSignalServiceClient(conn)
 }
 
-// recordingSubmitter captures every signal pushed onto the pipeline
-// plus controls the next Submit's return value. Drop-in for the real
-// pipeline.Pipeline in protocol tests.
 type recordingSubmitter struct {
 	accept bool
 	calls  []model.Signal
@@ -63,9 +52,6 @@ func (r *recordingSubmitter) Submit(s model.Signal) bool {
 	return r.accept
 }
 
-// TestGRPC_IngestStream_Accepts: stream three Signals, expect three
-// ACCEPTED acks in order. Verifies the bidi loop works end-to-end and
-// the pipeline saw all three.
 func TestGRPC_IngestStream_Accepts(t *testing.T) {
 	pipe := &recordingSubmitter{accept: true}
 	client := startGRPC(t, pipe)
@@ -79,7 +65,7 @@ func TestGRPC_IngestStream_Accepts(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		err := stream.Send(&imsv1.Signal{
+		err := stream.Send(&vellumv1.Signal{
 			ComponentId:   "GRPC_TEST",
 			ComponentType: string(model.ComponentCache),
 			Severity:      string(model.SeverityP1),
@@ -95,8 +81,7 @@ func TestGRPC_IngestStream_Accepts(t *testing.T) {
 		t.Fatalf("close send: %v", err)
 	}
 
-	// Drain acks.
-	var acks []*imsv1.Ack
+	var acks []*vellumv1.Ack
 	for {
 		ack, err := stream.Recv()
 		if err == io.EOF {
@@ -111,7 +96,7 @@ func TestGRPC_IngestStream_Accepts(t *testing.T) {
 		t.Fatalf("want 3 acks, got %d", len(acks))
 	}
 	for i, a := range acks {
-		if a.GetStatus() != imsv1.Ack_ACK_STATUS_ACCEPTED {
+		if a.GetStatus() != vellumv1.Ack_ACK_STATUS_ACCEPTED {
 			t.Errorf("ack[%d]: want ACCEPTED, got %s (err=%q)", i, a.GetStatus(), a.GetError())
 		}
 		if a.GetSignalId() == "" {
@@ -123,9 +108,6 @@ func TestGRPC_IngestStream_Accepts(t *testing.T) {
 	}
 }
 
-// TestGRPC_QueueFull_ReturnsRejectedAck: when pipeline.Submit returns
-// false, the server must reply with REJECTED_QUEUE_FULL (NOT close
-// the stream). Same backpressure semantics as the HTTP 503.
 func TestGRPC_QueueFull_ReturnsRejectedAck(t *testing.T) {
 	pipe := &recordingSubmitter{accept: false}
 	client := startGRPC(t, pipe)
@@ -133,7 +115,7 @@ func TestGRPC_QueueFull_ReturnsRejectedAck(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	stream, _ := client.IngestSignals(ctx)
-	_ = stream.Send(&imsv1.Signal{
+	_ = stream.Send(&vellumv1.Signal{
 		ComponentId:   "FULL_TEST",
 		ComponentType: string(model.ComponentAPI),
 		Severity:      string(model.SeverityP0),
@@ -145,7 +127,7 @@ func TestGRPC_QueueFull_ReturnsRejectedAck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recv: %v", err)
 	}
-	if ack.GetStatus() != imsv1.Ack_ACK_STATUS_REJECTED_QUEUE_FULL {
+	if ack.GetStatus() != vellumv1.Ack_ACK_STATUS_REJECTED_QUEUE_FULL {
 		t.Errorf("status: want REJECTED_QUEUE_FULL, got %s", ack.GetStatus())
 	}
 	if ack.GetError() == "" {
@@ -153,9 +135,6 @@ func TestGRPC_QueueFull_ReturnsRejectedAck(t *testing.T) {
 	}
 }
 
-// TestGRPC_InvalidSignal_ReturnsRejected: a Signal missing
-// component_id fails Validate() and gets REJECTED_INVALID. Mirror of
-// HTTP 400.
 func TestGRPC_InvalidSignal_ReturnsRejected(t *testing.T) {
 	pipe := &recordingSubmitter{accept: true}
 	client := startGRPC(t, pipe)
@@ -163,8 +142,8 @@ func TestGRPC_InvalidSignal_ReturnsRejected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	stream, _ := client.IngestSignals(ctx)
-	_ = stream.Send(&imsv1.Signal{
-		// component_id missing → Validate fails
+	_ = stream.Send(&vellumv1.Signal{
+
 		ComponentType: string(model.ComponentAPI),
 		Severity:      string(model.SeverityP0),
 		Source:        "test",
@@ -175,7 +154,7 @@ func TestGRPC_InvalidSignal_ReturnsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recv: %v", err)
 	}
-	if ack.GetStatus() != imsv1.Ack_ACK_STATUS_REJECTED_INVALID {
+	if ack.GetStatus() != vellumv1.Ack_ACK_STATUS_REJECTED_INVALID {
 		t.Errorf("status: want REJECTED_INVALID, got %s (err=%q)", ack.GetStatus(), ack.GetError())
 	}
 	if len(pipe.calls) != 0 {
@@ -183,8 +162,6 @@ func TestGRPC_InvalidSignal_ReturnsRejected(t *testing.T) {
 	}
 }
 
-// TestGRPC_HonoursProvidedSignalID: when the client supplies a valid
-// UUID, the server preserves it in the Ack.
 func TestGRPC_HonoursProvidedSignalID(t *testing.T) {
 	pipe := &recordingSubmitter{accept: true}
 	client := startGRPC(t, pipe)
@@ -193,7 +170,7 @@ func TestGRPC_HonoursProvidedSignalID(t *testing.T) {
 
 	wanted := uuid.New()
 	stream, _ := client.IngestSignals(ctx)
-	_ = stream.Send(&imsv1.Signal{
+	_ = stream.Send(&vellumv1.Signal{
 		SignalId:      wanted.String(),
 		ComponentId:   "X",
 		ComponentType: string(model.ComponentAPI),

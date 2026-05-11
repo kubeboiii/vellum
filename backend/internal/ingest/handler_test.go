@@ -10,12 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// fakeSubmitter lets us drive the handler without spinning up a real
-// pipeline. accept controls whether Submit returns true/false; calls
-// records every signal that arrived.
 type fakeSubmitter struct {
 	accept bool
 	calls  []model.Signal
