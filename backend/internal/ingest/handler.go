@@ -17,8 +17,16 @@ type Submitter interface {
 
 const retryAfterMillis = 100
 
+// MaxSignalBodyBytes caps a single signal POST body. The hot path
+// otherwise reads the whole body into memory before parsing; a
+// malicious 10GB POST would OOM the worker. 1 MiB is comfortably
+// above any realistic signal payload (Mongo doc cap is 16MB but
+// our typical payload is <2KB).
+const MaxSignalBodyBytes = 1 << 20
+
 func NewHandler(p Submitter, now func() time.Time) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxSignalBodyBytes)
 		var sig model.Signal
 		if err := c.ShouldBindJSON(&sig); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON: " + err.Error()})
