@@ -253,6 +253,103 @@
 
 ---
 
+## 2026-05-11 — Phase 3: migrations via golang-migrate CLI (not auto-run on startup)
+
+**Context:** SQL migrations have to run before the app can write — but where? Common patterns: (a) ship them as files run by the migrate CLI as an ops step, (b) embed migrate in the app and run on boot, (c) put everything in `init.sql`.
+
+**Decision:** Option (a). `backend/migrations/*.sql` is run by the `migrate` CLI (installed via Homebrew). `init.sql` only enables the timescaledb extension (which needs superuser). The app's pgx pool connects with a least-privileged user that can't run DDL.
+
+**Why:** Separates app-runtime credentials from schema-change credentials, which is the production-correct pattern. The app fails fast at startup if a migration is missing rather than silently re-running migrations on every restart. Easier rollback story (`migrate down`).
+
+**Alternatives considered:**
+- Embed migrate as a Go library and call `Migrate.Up()` at startup — convenient for dev but the app then needs DDL permissions, and "did this restart succeed" gets murky.
+- Put all DDL in `docker/postgres/init.sql` — works but no versioning, no rollback, no idempotency tracking once the dev volume sticks.
+
+**Impact:** README quick-start adds `migrate -path backend/migrations -database "$DATABASE_URL" up` between `docker compose up` and `go run ./cmd/ims`. Anyone joining the project needs `brew install golang-migrate`.
+
+---
+
+## 2026-05-11 — Phase 3: switched to mongo-driver v2 (not v1)
+
+**Context:** When pulling `go.mongodb.org/mongo-driver@latest`, Go emitted a deprecation warning: the v1 line is "deprecated, use go.mongodb.org/mongo-driver/v2".
+
+**Decision:** Use v2 (`go.mongodb.org/mongo-driver/v2`).
+
+**Why:** v2 is the supported branch going forward; new features and fixes land there. The API shape is almost identical (same `mongo.Connect`, `Collection.InsertOne`, etc.), so the migration cost is zero for new code. v1 still works but writing greenfield code against a deprecated module would be a bad look in interviews.
+
+**Alternatives considered:**
+- Stay on v1 — works but accumulates technical debt from day one.
+
+**Impact:** All Mongo imports use `go.mongodb.org/mongo-driver/v2/{mongo,bson,...}`. `options.Client().ApplyURI(...)` is the v2 form for connection options.
+
+---
+
+## 2026-05-11 — Phase 3: `*redis.Script.Run` instead of raw EVALSHA for the debouncer
+
+**Context:** First implementation called `client.EvalSha(ctx, sha, ...)` directly with the SHA from startup's `SCRIPT LOAD`. Problem: when Redis restarts (or FLUSHDB is invoked), the script cache is empty. Every subsequent EVALSHA returns `NOSCRIPT` and falls into our "Redis-down" fallback path — even though Redis is actually reachable. The system would permanently lose debouncing after any Redis restart until the IMS backend was also restarted.
+
+**Decision:** Use go-redis's `*redis.Script.Run` helper. It calls EVALSHA on the cached SHA (fast path); on `NOSCRIPT`, it automatically re-uploads the script body via EVAL and retries the call.
+
+**Why:** Production-grade resilience for one extra line of code. Confirmed empirically: kill Redis → fallback creates a work_item per signal (degraded mode); restart Redis (clean cache) → next 3 signals correctly debounce into 1 work_item. The fallback only fires when Redis is truly unreachable, not when it's just been restarted.
+
+**Alternatives considered:**
+- Manually catch `NOSCRIPT` and re-call `ScriptLoad` — works but reimplements what `*redis.Script` already does, with more surface area for bugs.
+- Reload the script periodically (every 30s, say) — wasteful in the steady state; doesn't help the moment-of-failure case.
+- Have a background goroutine watch `/health` and re-load on Redis recovery — extra goroutine, extra coordination, no better than the helper.
+
+**Impact:** `internal/debounce/debounce.go` constructs `redis.NewScript(scriptBody)` once in `New` and uses `script.Run(ctx, client, keys, args...)` per call. SHA returned by startup `SCRIPT LOAD` is accepted by `New()` for symmetry (and logging) but isn't stored — `*redis.Script` recomputes it. The startup `SCRIPT LOAD` still happens because it's a useful syntax check at boot time.
+
+---
+
+## 2026-05-11 — Phase 3: fan-out is NOT a distributed transaction (re-affirmed in code)
+
+**Context:** Per signal we write to Mongo, Postgres, and Timescale. Question: should we use a two-phase commit (2PC) or saga pattern to make these atomic?
+
+**Decision:** No. Each sink writes independently. Postgres is the **source of truth** for work_items; the other two are derivatives. Each write has its own retry-with-backoff + dead-letter; one failing sink doesn't block the others. The processor calls them sequentially in one goroutine — no fan-out goroutines, no parallel writes — because at 10K signals/sec, spawning 3 goroutines per signal is 30K extra goroutines/sec.
+
+**Why:** Cross-store distributed transactions need 2PC (not supported by Mongo + Redis + pgx in any clean way) or sagas (compensating actions — way over-engineered for a 7-day demo). Eventual consistency is acceptable per 01-architecture §6.2: "Mongo audit log is eventually consistent; Redis live feed briefly stale; Postgres state is correct."
+
+**Alternatives considered:**
+- Transactional outbox pattern (write to one DB + outbox row, separate relay process writes to others) — clean for production, way too much infrastructure for v1.
+- Parallel goroutine per sink — 30K extra goroutines/sec at 10K signals/sec. Not worth the latency savings.
+
+**Impact:** `internal/processor/processor.go` documents this as a one-paragraph comment. Each sink has its own dead-letter entry per FR-8.3, and the dead_letter Mongo collection is the operator's recovery surface (NG: not auto-replayed in v1).
+
+---
+
+## 2026-05-11 — Phase 3: testcontainers-go for repo integration tests
+
+**Context:** Repository code (work_item_repo, signal_repo, debouncer) is mostly SQL/BSON/Lua strings — unit-testing those with mocks just tests that we mocked them correctly. Real tests need real backends.
+
+**Decision:** Each repo package has a test file that spins up an ephemeral container (postgres / mongo / redis) via `testcontainers-go`, runs the production code against it, and tears down on `t.Cleanup`. The pg test also applies all migration files so the schema matches production.
+
+**Why:** Caught a real bug: the rate-limiter atomic test (Phase 2) only triggered under -race against real concurrency. Same will be true for repo code — real DBs have real serialization quirks. Cost: ~5–15s container startup per test file (acceptable; runs in CI in parallel). Phase 6's integration test will exercise the *whole* stack end-to-end; Phase 3's per-repo tests are the finer-grained safety net.
+
+**Alternatives considered:**
+- In-memory fakes for each repo — fast but tests the fake, not the real driver behaviour.
+- One big integration test in Phase 6 only — too late to catch repo-level bugs.
+- Run tests against the docker-compose stack — works but you have to remember to start it; CI complications.
+
+**Impact:** Test-only dependency on `testcontainers/testcontainers-go` + `modules/{postgres,mongodb,redis}`. The production binary is unaffected (testcontainers is in the `test` build only). `make test` would take ~30s longer than pure unit tests, which is fine.
+
+---
+
+## 2026-05-11 — Phase 3: `IncrementSignalCount` uses GREATEST() not naive UPDATE
+
+**Context:** When the debouncer returns `JOINED`, we UPDATE the existing work_item's `signal_count` and `last_signal_ts`. With N workers running in parallel, signal A (timestamp T+100ms) might be PROCESSED before signal B (timestamp T+50ms) — they were both accepted by the channel, workers consume them out of order.
+
+**Decision:** `SET last_signal_ts = GREATEST(last_signal_ts, $2)`. The new value is only written if it's actually newer than what's already there.
+
+**Why:** Without this, the displayed "last signal at" timestamp could flicker backward as out-of-order processing happens. Tiny issue (~50ms jitter) but a frustrating "why does the UI go backward?" bug to debug. GREATEST() in Postgres is cheap and makes the column **monotonic** by construction. The signal_count is `+=1` regardless (we want to count all of them, order-independent).
+
+**Alternatives considered:**
+- Sort signals by timestamp in the worker before UPDATE — adds latency to the hot path, doesn't actually solve it (workers are independent).
+- Use a window function / CTE to find the max — way more SQL for no extra correctness.
+
+**Impact:** One inline `GREATEST` call in `pg.WorkItemRepository.IncrementSignalCount`. Documented inline. Phase 4's state transitions don't need this trick — those are SERIALIZABLE transactions, but signal-count bumps are not (deliberately, to avoid serialization contention at 10K/sec).
+
+---
+
 <!--
 TEMPLATE for new entries — copy and fill in:
 
