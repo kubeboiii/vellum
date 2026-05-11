@@ -4,7 +4,7 @@ A backend-heavy distributed system that ingests failure signals at **10K/sec**,
 debounces them into work items, runs them through a state-machine lifecycle
 with mandatory RCA on closure, and exposes a Next.js dashboard for triage.
 
-Built as a 7-day engineering assignment. Currently at **Phase 2 (Ingestion & Backpressure)** — sustaining 10,000 req/sec with p99 < 2 ms.
+Built as a 7-day engineering assignment. Currently at **Phase 3 (Debounce & Persistence Fan-out)** — 10K signals/sec sustained with full polyglot persistence; debounce reduction ratio 100×.
 
 For the full picture, read in order:
 
@@ -18,7 +18,7 @@ For the full picture, read in order:
 
 ## Quick start
 
-Requires Docker (with Compose v2), Go 1.22+, Node 20+, and pnpm (via `corepack enable`).
+Requires Docker (with Compose v2), Go 1.22+, Node 20+, pnpm (via `corepack enable`), and the golang-migrate CLI (`brew install golang-migrate`).
 
 ```bash
 # 1. Bring up the four data stores (Postgres+TimescaleDB, Mongo, Redis).
@@ -27,13 +27,18 @@ docker compose -f docker/compose.yaml up -d
 # 2. Wait for healthchecks (~10s on a warm host).
 docker compose -f docker/compose.yaml ps
 
-# 3. Run the backend (Phase 2 = ingestion pipeline on :8080).
+# 3. Apply SQL migrations (creates work_items, state_transitions, signal_metrics hypertable).
+export DATABASE_URL="postgres://ims:ims@localhost:5432/ims?sslmode=disable"
+migrate -path backend/migrations -database "$DATABASE_URL" up
+
+# 4. Run the backend on :8080.
 cd backend && go run ./cmd/ims
-# -> curl http://localhost:8080/health   => 200, queue depth + counters
+# -> curl http://localhost:8080/health  =>  200, all deps `up` with latencies
 # -> curl -X POST http://localhost:8080/v1/signals \
 #         -H 'Content-Type: application/json' \
 #         -d '{"component_id":"RDBMS_PRIMARY_01","component_type":"RDBMS","severity":"P0","source":"datadog","payload":{"err":"oom"}}'
 #    => 202 {"signal_id":"...","status":"accepted"}
+#    Signal lands in Mongo (audit), debounced via Redis Lua, work_item in Postgres, metric in Timescale.
 
 # 4. Run the frontend (Phase 1 = placeholder page).
 cd frontend && pnpm dev
@@ -135,11 +140,53 @@ cd backend && IMS_RATE_LIMIT_RPS=20000 IMS_RATE_LIMIT_BURST=40000 go run ./cmd/i
 
 The script writes vegeta artifacts to `.loadtest/` (gitignored).
 
-## What Phase 2 does *not* do
+## Phase 3 acceptance (Debounce & Persistence Fan-out)
 
-No persistence. The worker's processor is a no-op (counts and discards).
-Phase 3 wires Redis Lua debounce, Mongo raw-signal writes, Postgres work
-items, TimescaleDB metrics, plus retry-with-backoff and dead-letter.
+- [x] SQL migrations create `work_items`, `state_transitions`, and the
+      TimescaleDB `signal_metrics` hypertable. `down` then `up` is idempotent.
+- [x] Per signal, the processor:
+      (1) atomically debounces via the Redis Lua script
+      (`backend/internal/debounce/script.lua`, loaded with `SCRIPT LOAD`),
+      (2) writes the raw signal to Mongo (always — FR-3.4),
+      (3) inserts a new `work_items` row OR bumps `signal_count` on an
+      existing one in Postgres,
+      (4) inserts a metric row into the Timescale hypertable.
+- [x] Every sink write is retry-with-backoff (3 attempts, 100ms × 2). On
+      exhaustion, the payload + error lands in the Mongo `dead_letter`
+      collection (not auto-replayed in v1).
+- [x] **Redis-down** → `/health` flips to `degraded` (status 200 because
+      Redis is non-critical), debounce falls back to "always CREATED"
+      (FR-3.6). On Redis restart, `*redis.Script.Run` auto-reloads the
+      script on the first `NOSCRIPT` and debouncing resumes.
+- [x] **Postgres-down** → work_item writes dead-letter after 3 retries;
+      Mongo audit still receives the raw signals; backend keeps running.
+- [x] `/health` pings every dep with a 500ms timeout and includes per-dep
+      `{status, latency_ms}` in the response.
+- [x] **Acceptance demo:** `./scripts/simulate-component-storm.sh` fires
+      200 signals at one component over 8 seconds and verifies:
+      ~200 raw signals in Mongo, 1–3 work_items in Postgres,
+      200 rows in Timescale, **reduction ratio ≥ 60×**.
+      Result: 2 work_items, **100× reduction**, 0 errors.
+
+### Phase 3 env vars (added this phase)
+
+| Var | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `postgres://ims:ims@localhost:5432/ims?sslmode=disable` | pgx pool DSN |
+| `MONGO_URI` | `mongodb://ims:ims@localhost:27017/ims?authSource=admin` | mongo client URI |
+| `MONGO_DATABASE` | `ims` | mongo logical database |
+| `REDIS_ADDR` | `localhost:6379` | redis address |
+| `IMS_DEBOUNCE_WINDOW_SECONDS` | `10` | FR-3.1 |
+| `IMS_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
+| `IMS_DEP_PING_TIMEOUT` | `500ms` | per-dep /health budget |
+
+### What Phase 3 does *not* do
+
+No state machine, no transitions, no RCA validation, no alerting.
+The processor only ever creates work_items in `OPEN` state. Phase 4
+adds the State pattern (Open → Investigating → Resolved → Closed),
+the Strategy pattern for alerters (PagerDutyStub / Slack / Console),
+the RCA model, and MTTR computation in `ClosedState.OnEnter`.
 
 ## Decisions log
 

@@ -21,7 +21,7 @@
 |---|---|---|
 | 1 | [phase-1-foundation-qa.md](phase-1-foundation-qa.md) | Repo scaffolding, Docker, the 4 data stores, why each one, Go modules, Next.js basics |
 | 2 | [phase-2-ingestion-qa.md](phase-2-ingestion-qa.md) | Goroutines & channels, backpressure, rate limiting, worker pools, /health, vegeta load testing |
-| 3 | *(TBD — Phase 3 will land here)* | Redis Lua atomic ops, polyglot persistence fan-out, retry+backoff, dead-letter |
+| 3 | [phase-3-debounce-qa.md](phase-3-debounce-qa.md) | Redis Lua atomic ops, polyglot persistence fan-out, retry+backoff, dead-letter, hypertables, testcontainers |
 | 4 | *(TBD)* | State pattern, Strategy pattern, RCA validation, transactions |
 | 5 | *(TBD)* | gRPC streaming, Next.js dashboard, SSR vs CSR |
 | 6 | *(TBD)* | Failure simulation, chaos testing, resilience patterns |

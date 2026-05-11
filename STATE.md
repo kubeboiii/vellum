@@ -7,9 +7,9 @@
 
 ## Current state
 
-**Phase:** 2 (Ingestion & Backpressure) — *complete, on branch `phase-2-ingestion`*
-**Last session ended:** 2026-05-11. Implemented `internal/model` (Signal + Validate), `internal/pipeline` (bounded channel + worker pool + graceful drain + atomic counters), `internal/ingest` (POST /v1/signals handler + per-source token-bucket rate limiter), and `internal/obs` (queue-aware /health + 5s metrics ticker). Wired in `cmd/ims/main.go` with env-driven config and ordered shutdown (HTTP listener first, then pipeline drain). All packages have unit tests; `go test -race ./...` clean. Vegeta load test (`scripts/load-test.sh`) sustained 10,000 req/s for 60s with 100% success, p99 = 1.89 ms (target ≤ 50 ms), 0 dropped.
-**Next action:** Begin Phase 3 (Debounce & Persistence Fan-out). First write `docs/phases/phase-3-debounce.md`. Then: implement `internal/persist/pg` (pgx pool + work_items table + migrations), `internal/persist/mongo` (raw signal writes), `internal/persist/redis` (Lua debounce script), `internal/persist/timescale` (signal_metrics hypertable). Replace `pipeline.NoopProcessor` with a real processor that runs the Redis Lua debounce script, fans out to Mongo + Postgres + Timescale, retries with exponential backoff, dead-letters on exhaustion. Upgrade `/health` to ping each dep. Acceptance: failure simulator shoots 200 signals at one component_id in 8 seconds; Postgres shows 1–3 work items, Mongo shows ~200 raw signals, reduction ratio ≥ 60×.
+**Phase:** 3 (Debounce & Persistence Fan-out) — *complete, on branch `phase-3-debounce`*
+**Last session ended:** 2026-05-11. Built the four persistence layers (`internal/persist/{pg,mongo,redis,timescale}`), the atomic Redis Lua debouncer (`internal/debounce` + `script.lua`), and the orchestrating processor (`internal/processor`). SQL migrations create `work_items`, `state_transitions`, and the TimescaleDB `signal_metrics` hypertable. Wired everything into `cmd/ims/main.go`: pgx pool, Mongo client, Redis client with SCRIPT LOAD, processor injected into the pipeline. `/health` now pings every dep with a 500ms timeout. Acceptance demo (`scripts/simulate-component-storm.sh`): 200 signals to one component → 2 work_items, 200 raw signals in Mongo, 200 rows in Timescale, **reduction ratio 100×** (target ≥ 60×). Redis-restart resilience verified: killing Redis flips status to `degraded` and the fallback creates a work_item per signal; on restart, NOSCRIPT auto-reload via `*redis.Script.Run` resumes normal debouncing. All packages have tests (testcontainers for repo tests, fakes for the processor). `go test -race ./...` clean across 10 packages.
+**Next action:** Begin Phase 4 (Workflow Engine). First write `docs/phases/phase-4-workflow.md`. Then: implement `internal/workflow` with the State pattern (Open/Investigating/Resolved/Closed), `internal/alert` with the Strategy pattern (PagerDutyStub for P0, SlackWebhook for P1/P2, Console fallback). Add the RCA model + validation, the MTTR computation in `ClosedState.OnEnter`, and the transactional state-transition wrapper (SERIALIZABLE isolation + SELECT FOR UPDATE in Postgres). Wire alerters into the processor's `CREATED` branch so new work_items fire alerts. Acceptance: unit tests cover every transition path + every rejection (incl. ErrMissingRCA, ErrInvalidTransition); a PATCH /state endpoint advances a work_item and a PATCH /rca closes it.
 
 ---
 
@@ -19,7 +19,7 @@ Tick boxes as phases complete. Each phase has acceptance criteria in its build-p
 
 - [x] **Phase 1 — Foundation** (Day 1): repo scaffolding, Docker Compose with all 4 DBs running, empty Go module, empty Next.js app, README skeleton
 - [x] **Phase 2 — Ingestion & Backpressure** (Day 2): HTTP endpoint, bounded channel, worker pool, token-bucket rate limiter, `/health`, metrics ticker, **load test proves 10K signals/sec** *(verified: 600K req over 60s, 100% success, p99 1.89 ms)*
-- [ ] **Phase 3 — Debounce & Persistence Fan-out** (Day 3): Redis Lua debounce, Mongo raw signal writes, Postgres work-item writes, TimescaleDB metric writes, retry-with-backoff, dead-letter
+- [x] **Phase 3 — Debounce & Persistence Fan-out** (Day 3): Redis Lua debounce, Mongo raw signal writes, Postgres work-item writes, TimescaleDB metric writes, retry-with-backoff, dead-letter *(verified: 200 signals → 2 work_items, ratio 100×; Redis-restart resilience confirmed)*
 - [ ] **Phase 4 — Workflow Engine** (Day 4): State pattern, Strategy pattern (alerters), RCA model + validation, MTTR calculation, transactional state transitions, unit tests
 - [ ] **Phase 5 — gRPC + Frontend** (Day 5): gRPC streaming endpoint sharing pipeline, Next.js dashboard (live feed, detail, RCA form)
 - [ ] **Phase 6 — Resilience & Simulation** (Day 6): failure simulator script, integration test, concurrency stress test, bug fixes
@@ -51,7 +51,7 @@ Tick boxes as phases complete. Each phase has acceptance criteria in its build-p
 |---|---|---|---|
 | Sustained ingestion | 10,000 sig/sec for 60s | **10,000/s, 0 dropped** | 2026-05-11 (Phase 2) |
 | p99 ingestion latency | < 50ms | **1.89 ms** | 2026-05-11 (Phase 2) |
-| Debounce reduction ratio | ≥ 60× (100 signals → 1 work item) | — | end Phase 3 |
+| Debounce reduction ratio | ≥ 60× (100 signals → 1 work item) | **100×** (200 signals → 2 work_items) | 2026-05-11 (Phase 3) |
 | Unit test coverage (core pkgs) | ≥ 60% | — | end Phase 4 |
 | `docker compose up` to healthy | < 90s | — | end Phase 7 |
 
