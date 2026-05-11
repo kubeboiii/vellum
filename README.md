@@ -1,8 +1,8 @@
-# Vellum — Mission-Critical Incident Management System
+# Vellum — Distributed Signal and Incident Response System
 
 > **Ingests failure signals at 10K/sec, debounces them into work items via atomic Redis Lua, runs them through a state-machine lifecycle with mandatory RCA on closure, and surfaces them through a Next.js triage dashboard.**
 
-A 7-day backend engineering project demonstrating high-throughput ingestion with backpressure, atomic debounce, polyglot persistence, State + Strategy design patterns, and a polished operator UI. **All 7 phases complete.**
+A backend-heavy distributed system demonstrating high-throughput ingestion with backpressure, atomic debounce, polyglot persistence (Postgres / Mongo / Redis / TimescaleDB), State + Strategy design patterns, and a polished operator UI.
 
 ```mermaid
 flowchart LR
@@ -30,38 +30,105 @@ For the full picture, read in order:
 
 ## Quick start
 
-Requires Docker (with Compose v2), Go 1.22+, Node 20+, pnpm (via `corepack enable`), and the golang-migrate CLI (`brew install golang-migrate`).
+### Prerequisites
+
+| Tool | Why | Install (macOS) |
+|---|---|---|
+| **Docker** (with Compose v2) | runs Postgres, Mongo, Redis | [docker.com](https://docs.docker.com/get-docker/) or `brew install --cask docker` |
+| **Go 1.22+** | builds + runs the backend | `brew install go` |
+| **Node 20+** + **pnpm** | builds + runs the frontend | `brew install node` then `corepack enable` |
+| **golang-migrate** | applies SQL migrations | `brew install golang-migrate` |
+
+### 1. Clone and configure
 
 ```bash
-# 1. Bring up the four data stores (Postgres+TimescaleDB, Mongo, Redis).
-docker compose -f docker/compose.yaml up -d
-
-# 2. Wait for healthchecks (~10s on a warm host).
-docker compose -f docker/compose.yaml ps
-
-# 3. Apply SQL migrations (creates work_items, state_transitions, signal_metrics hypertable).
-export DATABASE_URL="postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable"
-migrate -path backend/migrations -database "$DATABASE_URL" up
-
-# 4. Run the backend on :8080.
-cd backend && go run ./cmd/vellum
-# -> curl http://localhost:8080/health  =>  200, all deps `up` with latencies
-# -> curl -X POST http://localhost:8080/v1/signals \
-#         -H 'Content-Type: application/json' \
-#         -d '{"component_id":"RDBMS_PRIMARY_01","component_type":"RDBMS","severity":"P0","source":"datadog","payload":{"err":"oom"}}'
-#    => 202 {"signal_id":"...","status":"accepted"}
-#    Signal lands in Mongo (audit), debounced via Redis Lua, work_item in Postgres, metric in Timescale.
-
-# 4. Run the frontend (Phase 1 = placeholder page).
-cd frontend && pnpm dev
-# -> http://localhost:3000
+git clone https://github.com/kubeboiii/vellum.git
+cd vellum
+cp .env.example .env        # defaults match the docker-compose stack
 ```
 
-Tear down:
+### 2. Bring up the four data stores
 
 ```bash
-docker compose -f docker/compose.yaml down       # keep volumes
-docker compose -f docker/compose.yaml down -v    # nuke volumes
+docker compose -f docker/compose.yaml up -d
+docker compose -f docker/compose.yaml ps       # wait until all four show "healthy" (~10s)
+```
+
+This starts Postgres (with TimescaleDB extension), MongoDB, and Redis on `127.0.0.1` only — they are **not** exposed to your LAN. Default credentials `vellum:vellum` are documented for local dev only.
+
+### 3. Apply database migrations
+
+```bash
+export DATABASE_URL="postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable"
+migrate -path backend/migrations -database "$DATABASE_URL" up
+```
+
+Creates the `work_items`, `state_transitions`, `rca`, and `signal_metrics` (Timescale hypertable) tables.
+
+### 4. Start the backend (HTTP `:8080` + gRPC `:9090`)
+
+In its own terminal:
+
+```bash
+cd backend
+go run ./cmd/vellum
+```
+
+Verify it came up:
+
+```bash
+curl http://localhost:8080/health
+# → {"status":"healthy","dependencies":{"mongo":{"status":"up",...},...}}
+```
+
+Send a test signal:
+
+```bash
+curl -X POST http://localhost:8080/v1/signals \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "component_id":"RDBMS_PRIMARY_01",
+    "component_type":"RDBMS",
+    "severity":"P0",
+    "source":"datadog",
+    "payload":{"err":"connection refused"}
+  }'
+# → 202 {"signal_id":"...","status":"accepted"}
+```
+
+That signal flows: HTTP handler → bounded channel → worker pool → Redis Lua debouncer → MongoDB (raw audit) + Postgres (work_item) + TimescaleDB (timeseries) → alerter Strategy.
+
+### 5. Start the frontend (`:3000`)
+
+In a second terminal:
+
+```bash
+cd frontend
+pnpm install                 # first time only
+pnpm dev                     # or `pnpm build && pnpm start` for production mode
+```
+
+Open [http://localhost:3000](http://localhost:3000) for the landing page, or [http://localhost:3000/dashboard](http://localhost:3000/dashboard) to jump straight into the live feed.
+
+### 6. Generate some realistic load
+
+```bash
+go run ./scripts/simulate-outage.go --scenario all
+```
+
+Three pre-canned outage scenarios fire ~460 signals at the backend over ~15 seconds. The dashboard's live feed updates within 2s as the debouncer collapses them into ~9 work items.
+
+For sustained load testing:
+
+```bash
+./scripts/load-test.sh        # vegeta @ 10K signals/sec for 60s; needs `brew install vegeta`
+```
+
+### Tear down
+
+```bash
+docker compose -f docker/compose.yaml down        # keep volumes (data persists)
+docker compose -f docker/compose.yaml down -v     # nuke volumes (clean slate)
 ```
 
 ## Repo layout

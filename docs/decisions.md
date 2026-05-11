@@ -10,14 +10,14 @@
 
 ## 2026-05-11 — Tech stack: Go + Postgres + Mongo + Redis + TimescaleDB + Next.js
 
-**Context:** Need to pick stack for high-throughput Vellum in a 7-day window.
+**Context:** Need to pick stack for high-throughput Vellum in a tight scope.
 
 **Decision:** Go for backend, Gin for HTTP, gRPC for streaming, Postgres for transactional, MongoDB for audit log, Redis for cache + debounce, TimescaleDB (as Postgres extension) for timeseries, Next.js 14 for frontend, Docker Compose for orchestration.
 
 **Why:** Goroutines + channels map cleanly to bounded-channel backpressure. Polyglot persistence directly satisfies the assignment's "four sinks" requirement. TimescaleDB as a Postgres extension saves a container. Next.js gives server-side polling for the live feed without effort.
 
 **Alternatives considered:**
-- Rust + Axum — better concurrency story, but slower 7-day dev velocity for me.
+- Rust + Axum — better concurrency story, but slower single-developer dev velocity for me.
 - Node.js + Fastify — easier frontend integration, but goroutine model is a better fit for the assignment's "concurrency & scaling" rubric.
 - Single Postgres for everything (with JSONB) — would work but loses the "right tool for the job" story; rubric grades data-handling separately.
 
@@ -100,7 +100,7 @@
 **Why:** Distributed transactions across heterogeneous stores require 2PC, sagas, or compensating actions — vastly more complex than the requirement justifies. Eventual consistency is acceptable: if Redis is briefly out of sync, dashboard is briefly stale; if Mongo lags, audit log catches up.
 
 **Alternatives considered:**
-- Transactional outbox pattern — clean but adds infrastructure (an outbox table + relay process). Worth it in production, not for a 7-day demo.
+- Transactional outbox pattern — clean but adds infrastructure (an outbox table + relay process). Worth it in production, not for this project scope.
 - Saga with compensating actions — over-engineered for the failure modes we care about.
 
 **Impact:** The README's "consistency model" section will explicitly call this out.
@@ -150,7 +150,7 @@
 
 **Alternatives considered:**
 - Floating major tags (`postgres:16`, `redis:7`) — common, but breaks reproducibility on a reviewer's machine months later.
-- Digest pinning (`@sha256:...`) — bulletproof but ugly and a pain to update; overkill for a 7-day demo.
+- Digest pinning (`@sha256:...`) — bulletproof but ugly and a pain to update; overkill for this project scope.
 
 **Impact:** Anyone bumping versions must do it deliberately and log the upgrade here. Future Phase 7 dry-run on a fresh clone will confirm reproducibility.
 
@@ -214,7 +214,7 @@
 
 **Alternatives considered:**
 - Spoof X-Forwarded-For in vegeta to rotate fake IPs — overcomplicates the test, requires trusting proxies in Gin config.
-- Run vegeta from multiple boxes — out of scope for a 7-day demo.
+- Run vegeta from multiple boxes — out of scope for this project.
 - Disable the rate limiter entirely during load test — would not exercise the limiter's overhead at all (~50ns/call). Want it in the loop so the measured p99 includes it.
 
 **Impact:** README and load-test.sh both document this. Anyone running the script needs to know about the env override.
@@ -307,7 +307,7 @@
 
 **Decision:** No. Each sink writes independently. Postgres is the **source of truth** for work_items; the other two are derivatives. Each write has its own retry-with-backoff + dead-letter; one failing sink doesn't block the others. The processor calls them sequentially in one goroutine — no fan-out goroutines, no parallel writes — because at 10K signals/sec, spawning 3 goroutines per signal is 30K extra goroutines/sec.
 
-**Why:** Cross-store distributed transactions need 2PC (not supported by Mongo + Redis + pgx in any clean way) or sagas (compensating actions — way over-engineered for a 7-day demo). Eventual consistency is acceptable per 01-architecture §6.2: "Mongo audit log is eventually consistent; Redis live feed briefly stale; Postgres state is correct."
+**Why:** Cross-store distributed transactions need 2PC (not supported by Mongo + Redis + pgx in any clean way) or sagas (compensating actions — way over-engineered for this project scope). Eventual consistency is acceptable per 01-architecture §6.2: "Mongo audit log is eventually consistent; Redis live feed briefly stale; Postgres state is correct."
 
 **Alternatives considered:**
 - Transactional outbox pattern (write to one DB + outbox row, separate relay process writes to others) — clean for production, way too much infrastructure for v1.
@@ -452,7 +452,7 @@
 
 **Decision:** Use local protoc plugins installed in `$GOPATH/bin` (`protoc-gen-go`, `protoc-gen-go-grpc`). `buf.gen.yaml` references them via `local: protoc-gen-go`. Build only requires `buf` + the two plugins; no network call during code-gen.
 
-**Why:** Reproducibility. A 7-day demo can't depend on a vendor's CDN availability. Local plugins are one Homebrew/`go install` step per dev and then never touch the network again. The generated output is identical to the remote variant.
+**Why:** Reproducibility. This project can't depend on a vendor's CDN availability. Local plugins are one Homebrew/`go install` step per dev and then never touch the network again. The generated output is identical to the remote variant.
 
 **Alternatives considered:**
 - Remote plugins (`buf.build/...`) — convenient until they break, then you can't `buf generate` at all.

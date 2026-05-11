@@ -203,7 +203,7 @@ the start.
 
 ### Q: We're not using Kubernetes. Why?
 **A:** K8s solves problems we don't have (multi-node scheduling, rolling
-deploys, autoscaling). For a 7-day assignment that runs on one laptop,
+deploys, autoscaling). For a single-developer build that runs on one laptop,
 Compose is the right tool. Adding K8s would be over-engineering and would
 double the things to explain in an interview.
 
@@ -256,7 +256,7 @@ because hypertables are independent tables under the hood.
 **5. "What stops me from putting all the secrets in `.env` and committing it?"**
 Nothing technically — the gitignore does, but only if you trust the
 convention. In production, a real secret store (Vault, AWS Secrets
-Manager, GCP Secret Manager) is non-negotiable. For a 7-day demo with
+Manager, GCP Secret Manager) is non-negotiable. For this project scope with
 local-only DBs and no real PII, `.env` is fine.
 
 **6. "What's the difference between `docker compose up` and `up -d`?"**
