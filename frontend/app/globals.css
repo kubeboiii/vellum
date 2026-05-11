@@ -1,27 +1,110 @@
+/* IMS dashboard global styles. Implements THEME.md §2 (color), §3
+ * (typography), §4 (spacing), §5 (motion). Dark-only — there is no
+ * light mode (§8.3). */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* §2.1 surface levels + accents exposed as raw CSS variables, in
+ * case a component needs them outside Tailwind utilities. The same
+ * values live in tailwind.config.ts and stay in sync by convention. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  --bg-base: #000000;
+  --bg-surface: #0a0a0a;
+  --bg-elevated: #141414;
+  --bg-input: #0f0f0f;
+  --bg-hover: #1a1a1a;
+
+  --border-subtle: #1f1f1f;
+  --border-strong: #2a2a2a;
+  --border-focus: #404040;
+
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+
+  --accent: #bef264;
+  --accent-glow: rgba(190, 242, 100, 0.18);
+
+  --sev-p0: #ef4444;
+  --sev-p0-glow: rgba(239, 68, 68, 0.15);
+
+  /* LANDING.md §3 tokens. Annotation violet only appears on the
+   * landing page (and only inside <Annotation> components — see
+   * components/landing/Annotation.tsx). */
+  --annotation: #a78bfa;
+  --annotation-dim: #7c3aed;
+  --divider: rgba(255, 255, 255, 0.06);
+
+  /* LANDING.md §7 — diagram stroke tokens.
+   * These are intentionally BRIGHTER than --border-strong because
+   * the pattern-card diagrams render on top of `bg-base` (pure
+   * black), where #2A2A2A is invisible. Keep this in sync with
+   * tailwind.config.ts's `diagram` colors. */
+  --diagram-stroke: #3f3f46;
+  --diagram-label: #a1a1aa;
+  --diagram-active: #bef264;
+  --diagram-problem: #ef4444;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  /* The CSS variable is wired up in app/layout.tsx via
+   * next/font/google. Inter is the prose font. */
+  font-family: var(--font-sans), Inter, system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+/* §8.5 accessibility: respect prefers-reduced-motion. Strip the
+ * pulse + slide-in animations for users who opt out. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
+}
+
+/* Native dropdowns / selects inherit the dark surface — without
+ * this they default to white-on-white. */
+select option {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+}
+
+/* Scrollbar styling for dense vertical lists (signal panels). Uses
+ * the same subtle hairline aesthetic as the rest of the UI — no
+ * fluorescent thumb. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Selection: lime accent at low opacity. */
+::selection {
+  background-color: var(--accent-glow);
+  color: var(--text-primary);
 }

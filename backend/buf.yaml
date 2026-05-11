@@ -1,0 +1,15 @@
+# buf workspace config — see https://buf.build/docs/configuration/v2
+version: v2
+modules:
+  - path: proto
+
+# Lint rules: DEFAULT is buf's well-considered set. We turn off
+# RPC_REQUEST_RESPONSE_UNIQUE because our service has one bidi
+# method and reusing Signal as the request type is the whole point.
+lint:
+  use:
+    - STANDARD
+  except:
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME

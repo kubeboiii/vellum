@@ -1,0 +1,42 @@
+{
+  "name": "ims-dark",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#0A0A0A",
+    "editor.foreground": "#FAFAFA"
+  },
+  "tokenColors": [
+    {
+      "scope": ["comment", "punctuation.definition.comment"],
+      "settings": { "foreground": "#71717A", "fontStyle": "italic" }
+    },
+    {
+      "scope": ["keyword", "storage.type", "storage.modifier"],
+      "settings": { "foreground": "#F87171" }
+    },
+    {
+      "scope": ["string", "string.quoted", "string.template"],
+      "settings": { "foreground": "#34D399" }
+    },
+    {
+      "scope": ["constant.numeric"],
+      "settings": { "foreground": "#F59E0B" }
+    },
+    {
+      "scope": ["entity.name.function", "support.function", "meta.function-call entity.name.function"],
+      "settings": { "foreground": "#BEF264" }
+    },
+    {
+      "scope": ["variable", "variable.other"],
+      "settings": { "foreground": "#FAFAFA" }
+    },
+    {
+      "scope": ["entity.name.type", "support.type", "support.class"],
+      "settings": { "foreground": "#A78BFA" }
+    },
+    {
+      "scope": ["constant.language", "constant.other"],
+      "settings": { "foreground": "#A78BFA" }
+    }
+  ]
+}

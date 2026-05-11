@@ -46,15 +46,18 @@ func parseLimit(s string) (int, error) {
 //
 // The mapping (matches PRD G3 and 03-api-contract sketch):
 //
-//	pg.ErrNotFound              → 404 {"error": "incident not found"}
-//	workflow.ErrInvalidTransition→ 409 {"error": "transition not allowed: ..."}
-//	workflow.ErrMissingRCA      → 422 {"error": "rca is required"}
-//	workflow.ErrIncompleteRCA   → 422 {"errors": [{field, error}, ...]}
-//	anything else               → 500 {"error": err.Error()}
+//	pg.ErrNotFound                → 404 {"error": "incident not found"}
+//	pg.ErrSerializationFailure    → 409 {"error": "concurrent update; retry"}
+//	workflow.ErrInvalidTransition → 409 {"error": "transition not allowed: ..."}
+//	workflow.ErrMissingRCA        → 422 {"error": "rca is required"}
+//	workflow.ErrIncompleteRCA     → 422 {"errors": [{field, error}, ...]}
+//	anything else                 → 500 {"error": err.Error()}
 //
-// Putting this in one place means the four handlers all surface the
-// same shape — a frontend dev relying on `response.errors[]` doesn't
-// have to special-case each endpoint.
+// The 40001 → 409 mapping matters under load. The processor's
+// IncrementSignalCount UPDATE (NOT in a SERIALIZABLE tx, by design)
+// can race with a workflow transition (which IS SERIALIZABLE) and
+// Postgres aborts one to preserve serial-equivalent semantics. That's
+// expected behaviour — surface it as a retryable 409, not a scary 500.
 func writeWorkflowError(c *gin.Context, err error) {
 	var ire *workflow.IncompleteRCAError
 	switch {
@@ -69,6 +72,10 @@ func writeWorkflowError(c *gin.Context, err error) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	case errors.Is(err, workflow.ErrInvalidTransition):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, pg.ErrSerializationFailure):
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "concurrent update detected; please retry",
+		})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}

@@ -20,15 +20,18 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
 
 	"github.com/kubeboiii/ims/internal/alert"
 	"github.com/kubeboiii/ims/internal/api"
@@ -43,6 +46,7 @@ import (
 	"github.com/kubeboiii/ims/internal/pipeline"
 	"github.com/kubeboiii/ims/internal/processor"
 	"github.com/kubeboiii/ims/internal/workflow"
+	imsv1 "github.com/kubeboiii/ims/proto/ims/v1"
 )
 
 const (
@@ -63,6 +67,9 @@ const (
 	defaultDebounceMaxSignals    = 100
 	defaultDepPingTimeout        = 500 * time.Millisecond
 	defaultAlertTimeout          = 5 * time.Second
+
+	defaultGRPCAddr    = ":9090"
+	defaultCORSOrigins = "http://localhost:3000"
 )
 
 func main() {
@@ -152,6 +159,7 @@ func main() {
 	// Workflow engine (Phase 4): handles state transitions in a
 	// SERIALIZABLE Postgres tx + the compound RCA-and-close flow.
 	rcaRepo := pg.NewRCARepository(pgPool)
+	transitionReader := pg.NewTransitionReader(pgPool)
 	workflowEngine := workflow.NewEngine(pg.NewWorkflowTxRunner(workItems))
 
 	// ---- 3. Pipeline (Phase 2). Plug in the real Processor.
@@ -172,16 +180,25 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// CORS middleware so the Next.js dashboard at localhost:3000 can
+	// call this API in dev. Production would gate via a reverse proxy
+	// or proper CORS lib; this small inline implementation covers our
+	// needs without an extra dep.
+	r.Use(corsMiddleware(cfg.corsOrigins))
 
 	v1 := r.Group("/v1")
 	if err := ingest.RegisterRoutes(v1, pipe, limiter.Middleware()); err != nil {
 		log.Fatalf("ingest routes: %v", err)
 	}
-	// Phase 4 endpoints: incident list/detail + state machine + RCA.
+	// Phase 4+5 endpoints: incident list/detail + state machine + RCA
+	// + paginated raw signals + state-transition audit timeline
+	// + closed-incident history.
 	api.RegisterRoutes(v1, &api.Handlers{
-		WorkItems: workItems,
-		RCA:       rcaRepo,
-		Engine:    workflowEngine,
+		WorkItems:   workItems,
+		RCA:         rcaRepo,
+		Signals:     signals,
+		Transitions: transitionReader,
+		Engine:      workflowEngine,
 	})
 
 	health := obs.NewHealth(pipe, obs.HealthConfig{
@@ -208,7 +225,7 @@ func main() {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("ims-backend listening on %s (workers=%d, queue=%d, debounce=%ds/%dmax)",
+		log.Printf("ims-backend HTTP listening on %s (workers=%d, queue=%d, debounce=%ds/%dmax)",
 			cfg.httpAddr, cfg.workerCount, cfg.queueCapacity, cfg.debounceWindow, cfg.debounceMaxSignals)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
@@ -216,10 +233,36 @@ func main() {
 		close(serverErr)
 	}()
 
+	// ---- 7b. gRPC server (Phase 5). Listens on a separate port,
+	// shares the same pipeline as HTTP per FR-1.3 ("exactly one
+	// downstream path regardless of protocol").
+	grpcLis, err := net.Listen("tcp", cfg.grpcAddr)
+	if err != nil {
+		log.Fatalf("grpc listen: %v", err)
+	}
+	grpcSrv := grpc.NewServer()
+	imsv1.RegisterSignalServiceServer(grpcSrv, ingest.NewSignalServiceServer(pipe))
+	grpcErr := make(chan error, 1)
+	go func() {
+		log.Printf("ims-backend gRPC listening on %s", cfg.grpcAddr)
+		if err := grpcSrv.Serve(grpcLis); err != nil {
+			grpcErr <- err
+		}
+		close(grpcErr)
+	}()
+
 	select {
 	case err := <-serverErr:
 		if err != nil {
 			log.Printf("http server failed: %v", err)
+			grpcSrv.Stop()
+			pipe.Stop()
+			os.Exit(1)
+		}
+	case err := <-grpcErr:
+		if err != nil {
+			log.Printf("grpc server failed: %v", err)
+			_ = srv.Close()
 			pipe.Stop()
 			os.Exit(1)
 		}
@@ -227,13 +270,23 @@ func main() {
 		log.Printf("shutdown signal received")
 	}
 
-	// ---- 8. Ordered shutdown (same as Phase 2).
-	log.Printf("shutting down: HTTP first, then pipeline drain (timeout=%s)", cfg.shutdownTimeout)
+	// ---- 8. Ordered shutdown: stop accepting new requests (HTTP +
+	// gRPC) first, then drain the pipeline. Pipeline.Stop closes the
+	// channel, which would panic any in-flight handler trying to
+	// Submit — so the network shutdowns MUST come first.
+	log.Printf("shutting down: servers first, then pipeline drain (timeout=%s)", cfg.shutdownTimeout)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout)
 	defer cancel()
+
+	// GracefulStop waits for in-flight RPCs but won't accept new ones.
+	// We don't bound it by ctx because gRPC's Stop (the rude one)
+	// fires automatically if the process exits — and our outer
+	// shutdownTimeout caps total wall time via pipe drain anyway.
+	go grpcSrv.GracefulStop()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("http shutdown error: %v", err)
 	}
+	grpcSrv.Stop() // belt-and-braces: ensure gRPC is fully done.
 	pipe.Stop()
 	<-pipe.Done()
 	log.Print("ims-backend stopped")
@@ -261,6 +314,9 @@ type config struct {
 
 	slackWebhookURL string
 	alertTimeout    time.Duration
+
+	grpcAddr    string
+	corsOrigins []string
 }
 
 func loadConfig() config {
@@ -284,6 +340,57 @@ func loadConfig() config {
 
 		slackWebhookURL: envOr("SLACK_WEBHOOK_URL", ""),
 		alertTimeout:    envDur("IMS_ALERTER_TIMEOUT", defaultAlertTimeout),
+
+		grpcAddr:    envOr("IMS_GRPC_ADDR", defaultGRPCAddr),
+		corsOrigins: parseCSV(envOr("IMS_CORS_ORIGINS", defaultCORSOrigins)),
+	}
+}
+
+// parseCSV splits a comma-separated env value, trimming whitespace
+// and skipping empty entries. Used for IMS_CORS_ORIGINS.
+func parseCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// corsMiddleware enforces a tiny CORS policy: each request's Origin
+// must be in `allowed`, or the response carries no CORS headers (and
+// browsers will block it). Handles preflight OPTIONS by short-circuiting
+// with 204.
+//
+// Why inline rather than gin-contrib/cors:
+//   - Our needs are tiny — one list of origins, the standard methods,
+//     no credentials, no custom headers beyond Content-Type.
+//   - Avoids a new dep just for ~30 lines of logic that we can review
+//     in one sitting.
+func corsMiddleware(allowed []string) gin.HandlerFunc {
+	set := make(map[string]struct{}, len(allowed))
+	for _, o := range allowed {
+		set[o] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin == "" {
+			c.Next()
+			return
+		}
+		if _, ok := set[origin]; ok {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Content-Type")
+			c.Header("Vary", "Origin")
+		}
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
 	}
 }
 

@@ -446,6 +446,120 @@
 
 ---
 
+## 2026-05-11 — Phase 5: buf with LOCAL plugins, not remote
+
+**Context:** `buf generate` can pull plugins (`buf.build/protocolbuffers/go`, `buf.build/grpc/go`) over the network. Convenient but fragile — when we tried it, the remote returned "the server hosted at that remote is unavailable" mid-build.
+
+**Decision:** Use local protoc plugins installed in `$GOPATH/bin` (`protoc-gen-go`, `protoc-gen-go-grpc`). `buf.gen.yaml` references them via `local: protoc-gen-go`. Build only requires `buf` + the two plugins; no network call during code-gen.
+
+**Why:** Reproducibility. A 7-day demo can't depend on a vendor's CDN availability. Local plugins are one Homebrew/`go install` step per dev and then never touch the network again. The generated output is identical to the remote variant.
+
+**Alternatives considered:**
+- Remote plugins (`buf.build/...`) — convenient until they break, then you can't `buf generate` at all.
+- Plain `protoc` with manual flags — more flags to remember, no lint integration.
+
+**Impact:** README documents the install. CI (if we ever add it) caches `~/go/bin/protoc-gen-go*` rather than depending on buf.build.
+
+---
+
+## 2026-05-11 — Phase 5: proto laid out as `proto/ims/v1/signals.proto`
+
+**Context:** buf's STANDARD lint rule requires `package ims.v1` to live in directory `ims/v1` relative to the proto root. We hit the warning on first generate.
+
+**Decision:** Restructure: `backend/proto/ims/v1/signals.proto`. `go_package` is `github.com/kubeboiii/ims/proto/ims/v1;imsv1`. Generated stubs land alongside the .proto.
+
+**Why:** Buf's "package = directory" convention is the canonical layout. Future protos (e.g. `ims.v1.WorkflowService`) get their own file under `ims/v1/`; a hypothetical `ims/v2/...` migration becomes a sibling directory.
+
+**Alternatives considered:**
+- Rename package to bare `ims` — dodges the warning but loses the version namespace; v2 evolution becomes hard.
+- Suppress the lint rule — same problem in less explicit form.
+
+**Impact:** Import path is `imsv1` in Go. Generated files are checked into git so reviewers don't need protoc installed to `go build`.
+
+---
+
+## 2026-05-11 — Phase 5: bidi-streaming gRPC + bytes payload (not Struct)
+
+**Context:** FR-1.2 requires a streaming gRPC ingestion endpoint. Two protobuf choices: payload as `google.protobuf.Struct` (typed JSON tree) vs `bytes` (raw JSON blob).
+
+**Decision:** `bytes payload = 7`. Client sends serialised JSON, server stores it as native BSON via one `json.Unmarshal` in the existing processor.
+
+**Why:** Performance + symmetry. Struct forces a JSON-shaped *protobuf* tree which costs ~µs to re-encode on both ends and creates a mismatch with the HTTP path (which already takes JSON bytes). Bytes preserves the original blob verbatim — same code path as HTTP. The cost is "no protobuf-level validation of payload shape," which we don't want anyway (payloads are intentionally schemaless per FR-3.4).
+
+**Alternatives considered:**
+- `google.protobuf.Struct` — typed but doubles serialisation work and forks the processor path.
+- Per-source-type oneof — would force every observability tool's schema into the proto, defeats the heterogeneous-payload goal.
+
+**Impact:** gRPC and HTTP share the same `model.Signal.Payload` (`json.RawMessage`) all the way to Mongo. Adding a new observability tool that emits weird JSON requires zero proto changes.
+
+---
+
+## 2026-05-11 — Phase 5: gRPC server-side rate limiting is deferred
+
+**Context:** The HTTP handler has per-source token-bucket rate limiting (Phase 2). The gRPC handler currently has none. Should it?
+
+**Decision:** No rate limiter on the gRPC path for v1. The pipeline's bounded channel still backpressures (the gRPC handler returns `Ack_ACK_STATUS_REJECTED_QUEUE_FULL` when Submit fails), but there's no per-peer cap on accept rate.
+
+**Why:** gRPC peers are typically long-lived internal services emitting many signals on one HTTP/2 connection — different threat model from HTTP-per-request. The natural backpressure (server controls when it reads from the stream + queue-full rejects) is adequate. A proper limiter would be a gRPC interceptor and earns its place when we actually run multiple gRPC peers, which we don't in v1.
+
+**Alternatives considered:**
+- Reuse the HTTP `RateLimiter` keyed on gRPC peer address — works, but a single peer connection ≠ a single request, so per-RPC rate doesn't map cleanly to per-source rate.
+- Add a per-stream message rate — meaningful, but Phase 6+ territory.
+
+**Impact:** The PRD's FR-1.6 is interpreted as "per-source on HTTP." Phase 6 (resilience) can revisit if a chaos test reveals a gRPC peer hammering the pipeline harder than backpressure allows.
+
+---
+
+## 2026-05-11 — Phase 5: dashboard polls every 2s instead of SSE/WebSocket
+
+**Context:** FR-7.1 specifies the live feed "auto-refreshes every 2 seconds." Three options: client-side polling, Next.js ISR (`revalidate: 2`), Server-Sent Events / WebSocket.
+
+**Decision:** Client-side polling via `useEffect` + `setInterval`. The page is `'use client'`.
+
+**Why:** Simplest mental model that satisfies the requirement. One tab → one outbound request every 2s → trivial load. ISR would cache per-route (not per-user) and accidentally serve stale data to user N when user 1 triggered the refresh. SSE/WebSocket is on the explicit bonus list (PRD B2) and adds a stateful backend endpoint that complicates Phase 6 chaos testing.
+
+**Alternatives considered:**
+- ISR — clever but the 2s revalidate is per-route, which means all dashboard users share the same cached response. Unwanted coupling.
+- WebSocket push — PRD B2 bonus. Worth doing if Day 7 has slack; not before.
+
+**Impact:** Adding WebSocket later is a frontend-only change to `app/page.tsx` plus a `/v1/incidents/stream` endpoint on the backend. The polling client code becomes the fallback path.
+
+---
+
+## 2026-05-11 — Phase 5: skipped shadcn/ui, hand-rolled Tailwind components
+
+**Context:** CLAUDE.md prescribes shadcn/ui. We tried `pnpm dlx shadcn@latest init`; the CLI hung indefinitely (~3 min) and produced no `components.json`. Killed and reconsidered.
+
+**Decision:** Skip shadcn for v1; write a few small Tailwind components by hand (`SeverityBadge`, `StatusBadge`, inline `Field` wrapper). Total: ~60 lines of presentational code across two files.
+
+**Why:** End-state is identical — shadcn's value is "copy ownable components into your repo"; hand-writing those same components gets us there directly. Pages render correctly, `pnpm build` is clean, no Radix dep in the bundle. We can re-introduce shadcn in Phase 7 if a particular component (combobox, dialog) gets complex.
+
+**Alternatives considered:**
+- Wait for the dlx to complete — already waited 3 min, no progress.
+- Install shadcn globally via `npm i -g shadcn` then init — same dlx code path, likely same hang.
+- Use Mantine / Chakra / MUI — bigger runtime dep, also not in CLAUDE.md.
+
+**Impact:** Frontend stays at ~98 KB First Load JS (Tailwind only, no Radix). Phase 7 polish may add shadcn for the more complex pages if we add them.
+
+---
+
+## 2026-05-11 — Phase 5: SQLSTATE 40001 → 409 Conflict (not 500)
+
+**Context:** Under load (gRPC streaming 10 signals at once) we saw the workflow engine's `Commit` fail with `could not serialize access due to concurrent update (SQLSTATE 40001)`. The processor's `IncrementSignalCount` UPDATE was racing with the workflow's SERIALIZABLE transaction. Default behaviour: `fmt.Errorf("pg: commit: %w", err)` propagates → API handler returns 500.
+
+**Decision:** Match `*pgconn.PgError.Code == "40001"` in a `wrapPgError` helper that elevates it to a `pg.ErrSerializationFailure` sentinel. The API error helper maps that sentinel to **409 Conflict** with `{"error":"concurrent update detected; please retry"}`.
+
+**Why:** 40001 is not a server bug — it's Postgres correctly preserving SERIALIZABLE semantics. The client should retry. 500 implies broken backend; 409 signals "retry the same request" exactly. Matches 01-architecture §7.2.1's stated contract: "two concurrent requests to close the same incident cannot both succeed... whoever loses retries or gets a 409 Conflict."
+
+**Alternatives considered:**
+- Auto-retry server-side — opaque to the client, harder to debug, can mask actual bugs.
+- Stay at 500 — wrong semantics; clients can't tell retryable from real failures.
+- Use `READ COMMITTED` to dodge 40001 entirely — would break Phase 4's audit-table phantom-read protection.
+
+**Impact:** Frontend's PATCH/POST flow can implement a simple retry-on-409 loop. Phase 6's stress test will deliberately exercise this path.
+
+---
+
 <!--
 TEMPLATE for new entries — copy and fill in:
 
@@ -461,3 +575,30 @@ TEMPLATE for new entries — copy and fill in:
 
 **Impact:** what this changes downstream
 -->
+
+## 2026-05-11 — Phase 5 Tier-1 dashboard buildout
+**Context:** After landing-page polish, the dashboard itself was a thin shell. Plenty of backend data was being captured but invisible to the UI.
+**Decision:** Built the entire Tier-1 list against the existing API (no backend changes, no new dependencies). Six new components for /dashboard, five for /incidents/[id], four for /incidents/closed, three new top-level routes (/postmortem, /load-test, /simulate, /flow). Plus a HealthStrip mounted under the Nav on every dashboard route. PersonaSwitcher rearranges the live feed per PRD §6 persona. Web-Audio P0 beep hooked to the unmute toggle.
+**Why:** Maximum visible value per hour. Tier-2 + Tier-3 items needed schema or new endpoints; Tier-1 didn't.
+**Alternatives considered:** WebSocket live feed (PRD §11 B2) and time-travel scrubber (B3) — left as future work; both Tier-3 and visible-but-not-foundational.
+**Impact:** Bundle: /dashboard 110→112kb (+2kb), /incidents/[id] 3.5→13kb (+9.5kb for histograms/fingerprints/timelines), /incidents/closed 4.8→7.4kb. New routes are ~5kb each. All 11 routes prerender, all return 200 under prod server.
+
+## 2026-05-11 — Why we kept StatCards alongside SeverityStackedBar
+**Context:** The new SeverityStackedBar shows the active P0/P1/P2/P3 split as a single bar. The four existing StatCards show counts plus deltas plus sparklines.
+**Decision:** Keep both. The bar answers "what's the *mix* right now" at a glance; the StatCards answer "how is each number *trending*."
+**Why:** Different questions deserve different visuals. Cutting the StatCards would lose the delta + sparkline context.
+
+## 2026-05-11 — CategoryBreakdown is lazy-loaded
+**Context:** Need RCA root_cause_category breakdown for closed incidents, but /v1/incidents/closed doesn't include the RCA.
+**Decision:** Render a "compute" button; on click, fire Promise.all of getIncident() over the first 50 closed items.
+**Why:** Eager fetch would make the closed page issue 100 round-trips on load — unacceptable performance. Lazy is a fine UX trade for a secondary analytics widget.
+
+## 2026-05-11 — /load-test client-side count cap
+**Context:** /load-test fires real POSTs to /v1/signals; a typo could DoS the user's own laptop.
+**Decision:** Hard cap count at 10,000 and rps at 5,000 client-side.
+**Why:** Backend designed for 10k/s sustained — 5k/s burst is well within safe range. 10k total signals keeps any single test under 2s at max rps.
+
+## 2026-05-11 — Web Audio P0 beep instead of MP3
+**Context:** PRD wants a sound alert when a new P0 lands.
+**Decision:** Synthesize a 880Hz square-wave beep via Web Audio API instead of bundling an audio asset.
+**Why:** No bundle cost, no autoplay-policy surprises (the user has just clicked "unmute"), no asset to choose / license.

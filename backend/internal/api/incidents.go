@@ -1,15 +1,15 @@
 // Package api holds the HTTP handlers for the workflow + dashboard
-// endpoints added in Phase 4. The ingestion handler (POST /v1/signals)
-// stays in `internal/ingest` because it has a different lifecycle
-// (rate-limited, non-blocking, hot path); these handlers are
-// human-driven, low-frequency, and need workflow.Engine access.
+// endpoints. Split from `internal/ingest` because these handlers are
+// human-driven (low frequency, transactional reads/writes) whereas
+// ingest is the hot path (rate-limited, non-blocking enqueue).
 //
-// Endpoints registered here:
+// Endpoints:
 //
-//	GET    /v1/incidents             — live feed (non-CLOSED, sorted)
-//	GET    /v1/incidents/:id         — detail (work_item + rca if any)
-//	PATCH  /v1/incidents/:id/state   — advance state machine one step
-//	POST   /v1/incidents/:id/rca     — submit RCA and close in one tx
+//	GET    /v1/incidents                  — live feed (non-CLOSED, sorted)
+//	GET    /v1/incidents/:id              — detail (work_item + rca if any)
+//	PATCH  /v1/incidents/:id/state        — advance state machine one step
+//	POST   /v1/incidents/:id/rca          — submit RCA and close in one tx
+//	GET    /v1/incidents/:id/signals      — paginated raw signals (Phase 5)
 package api
 
 import (
@@ -19,25 +19,31 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/ims/internal/persist/mongo"
 	"github.com/kubeboiii/ims/internal/persist/pg"
 	"github.com/kubeboiii/ims/internal/workflow"
 )
 
 // Handlers bundles the dependencies the API package needs. Constructed
-// once in main.go. The repo pointers are concrete because v1 has
-// exactly one Postgres implementation; if/when we add a second backend
-// we'll introduce narrow interfaces.
+// once in main.go. We use concrete repo pointers (not interfaces)
+// because v1 has exactly one Postgres + Mongo implementation each;
+// introducing interfaces for a single implementation is YAGNI.
 type Handlers struct {
-	WorkItems *pg.WorkItemRepository
-	RCA       *pg.RCARepository
-	Engine    *workflow.Engine
+	WorkItems   *pg.WorkItemRepository
+	RCA         *pg.RCARepository
+	Signals     *mongo.SignalRepository
+	Transitions *pg.TransitionReader
+	Engine      *workflow.Engine
 }
 
-// RegisterRoutes mounts the four endpoints onto a Gin router group.
+// RegisterRoutes mounts the endpoints onto a Gin router group.
 // Call from main.go: `api.RegisterRoutes(v1, &api.Handlers{...})`.
 func RegisterRoutes(rg *gin.RouterGroup, h *Handlers) {
 	rg.GET("/incidents", h.ListIncidents)
+	rg.GET("/incidents/closed", h.ListClosedIncidents)
 	rg.GET("/incidents/:id", h.GetIncident)
+	rg.GET("/incidents/:id/signals", h.ListSignals)
+	rg.GET("/incidents/:id/transitions", h.ListTransitions)
 	rg.PATCH("/incidents/:id/state", h.PatchState)
 	rg.POST("/incidents/:id/rca", h.PostRCA)
 }
@@ -60,6 +66,51 @@ func (h *Handlers) ListIncidents(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "count": len(items)})
+}
+
+// ---- GET /v1/incidents/closed ----
+
+// ListClosedIncidents returns the CLOSED Work Items sorted by
+// closed_at DESC. Powers the post-mortem history page
+// (`/incidents/closed` in the dashboard).
+//
+// Routed BEFORE the `:id` parameter route so the literal "closed"
+// segment doesn't get parsed as a UUID. Gin's tree router handles
+// this correctly because static segments outrank wildcards, but
+// listing this explicitly above the wildcard registration in
+// RegisterRoutes also documents the precedence.
+func (h *Handlers) ListClosedIncidents(c *gin.Context) {
+	limit := 100
+	if v := c.Query("limit"); v != "" {
+		if n, err := parseLimit(v); err == nil {
+			limit = n
+		}
+	}
+	items, err := h.WorkItems.ListClosed(c.Request.Context(), limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "count": len(items)})
+}
+
+// ---- GET /v1/incidents/:id/transitions ----
+
+// ListTransitions returns the audit trail (state_transitions table
+// rows) for one Work Item, chronological ascending. Powers the
+// detail page's Timeline panel (PRD FR-7.2). Returns an empty list
+// for unknown IDs rather than 404 — same trade-off as ListSignals.
+func (h *Handlers) ListTransitions(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	rows, err := h.Transitions.ListByWorkItem(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": rows, "count": len(rows)})
 }
 
 // ---- GET /v1/incidents/:id ----
@@ -93,6 +144,41 @@ func (h *Handlers) GetIncident(c *gin.Context) {
 		// as "no RCA".
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// ---- GET /v1/incidents/:id/signals ----
+
+// ListSignals returns the raw signals attached to a Work Item, newest
+// first, paginated (FR-7.2). Default 50/page, max 200/page. Powers
+// the detail page's "Raw signals" panel.
+//
+// We don't 404 on an unknown work_item_id here — the response is
+// simply `{items: [], total: 0}`. That keeps the handler stateless
+// (no Postgres lookup just to confirm existence), and the dashboard
+// already 404s on the parent GET /v1/incidents/:id when needed.
+func (h *Handlers) ListSignals(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	page := 1
+	perPage := 50
+	if v := c.Query("page"); v != "" {
+		if n, err := parseLimit(v); err == nil {
+			page = n
+		}
+	}
+	if v := c.Query("per_page"); v != "" {
+		if n, err := parseLimit(v); err == nil {
+			perPage = n
+		}
+	}
+	pageOut, err := h.Signals.ListByWorkItem(c.Request.Context(), id, page, perPage)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, pageOut)
 }
 
 // ---- PATCH /v1/incidents/:id/state ----

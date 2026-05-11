@@ -1,0 +1,57 @@
+// THEME.md §6.2 — State pill.
+//
+// "The workhorse of the UI." Anatomy: [ • LABEL ]
+//   - 6px dot, state-keyed color, optionally pulsing
+//   - 11px JetBrains Mono, uppercase, tracking 0.04em
+//   - background = state's bg variant at low alpha
+//   - 1px border = state's border variant
+//   - radius-sm (4px), px-2 py-0.5
+//
+// Special: OPEN + P0 → dot pulses (§6.7). The pill itself does not pulse.
+
+import type { Status } from "@/lib/types";
+
+// pillStyles maps each Status to its visual treatment. Tailwind
+// can't generate dynamic class names, so the strings are spelled out.
+const pillStyles: Record<Status, { dot: string; pill: string }> = {
+  OPEN: {
+    dot: "bg-state-open",
+    pill: "border-sev-p0-border bg-sev-p0-bg/40 text-red-300",
+  },
+  INVESTIGATING: {
+    dot: "bg-state-investigating",
+    pill: "border-sev-p2-border bg-sev-p2-bg/40 text-amber-300",
+  },
+  RESOLVED: {
+    dot: "bg-state-resolved",
+    pill: "border-emerald-900 bg-emerald-950/40 text-emerald-300",
+  },
+  CLOSED: {
+    dot: "bg-state-closed",
+    pill: "border-zinc-800 bg-zinc-900/50 text-zinc-400",
+  },
+};
+
+interface StatePillProps {
+  status: Status;
+  // pulseDot fires the §6.7 pulse on the dot. Set true for P0+OPEN
+  // only — every other state, or non-P0 OPEN, stays static.
+  pulseDot?: boolean;
+}
+
+export function StatePill({ status, pulseDot }: StatePillProps) {
+  const s = pillStyles[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-label font-medium uppercase tracking-[0.04em] ${s.pill}`}
+    >
+      <span
+        // The dot. 6px square that reads round via rounded-full.
+        // pulse-p0 keyframes live in tailwind.config.ts.
+        className={`inline-block h-1.5 w-1.5 rounded-full ${s.dot} ${pulseDot ? "animate-pulse-p0" : ""}`}
+        aria-hidden
+      />
+      {status}
+    </span>
+  );
+}

@@ -1,0 +1,87 @@
+// Phase 5 — gRPC ingestion contract.
+//
+// 00-master-prd FR-1.2 and 01-architecture §4 require a second
+// ingestion protocol that shares the HTTP path's downstream pipeline.
+// This service is server-streaming with bidi: clients write Signal
+// messages, server writes one Ack per accepted signal.
+//
+// Why bidi instead of unary "one RPC per signal":
+//   * One TCP/HTTP2 connection amortised across thousands of signals;
+//     no per-call handshake.
+//   * Backpressure-aware: server reads at its own pace; if the
+//     pipeline is full the server returns ACK with REJECTED_QUEUE_FULL
+//     and the client knows to slow down.
+//
+// Why `bytes payload` instead of `google.protobuf.Struct`:
+//   * Struct forces a JSON-shaped tree which costs ~µs per signal to
+//     re-encode on both sides; we want to preserve the original JSON
+//     bytes verbatim so it can stream straight into Mongo (Phase 3
+//     stores it as native BSON via one Unmarshal).
+//   * Clients usually have a serialised JSON blob already; sending it
+//     as bytes avoids a parse-and-reserialise round-trip.
+
+syntax = "proto3";
+package ims.v1;
+
+// Generated Go lands at backend/proto/ims/v1/*.pb.go thanks to
+// paths=source_relative in buf.gen.yaml; the Go package name is
+// `imsv1` so call sites read `imsv1.Signal{...}`.
+option go_package = "github.com/kubeboiii/ims/proto/ims/v1;imsv1";
+
+import "google/protobuf/timestamp.proto";
+
+// SignalService is the only RPC surface in v1. Single bidi stream;
+// extend with unary methods in later versions if needed.
+service SignalService {
+  // IngestSignals: client streams Signal, server streams Ack.
+  //
+  // The server commits to ACKing every Signal it reads, in order,
+  // before the stream closes. Clients should buffer pending ACKs
+  // up to ~100ms before considering a signal lost.
+  rpc IngestSignals(stream Signal) returns (stream Ack);
+}
+
+// Signal mirrors the HTTP JSON schema in 00-master-prd §4.2.
+// Field numbers are stable; never renumber.
+message Signal {
+  // Optional. Server mints a UUID if empty.
+  string signal_id = 1;
+
+  // Required. e.g. "RDBMS_PRIMARY_01"
+  string component_id = 2;
+
+  // Required. Enum string: API|MCP_HOST|CACHE|QUEUE|RDBMS|NOSQL|OTHER
+  string component_type = 3;
+
+  // Required. Enum string: P0|P1|P2|P3
+  string severity = 4;
+
+  // Optional. Server stamps `now()` if zero.
+  google.protobuf.Timestamp timestamp = 5;
+
+  // Required. Which observability tool emitted this.
+  string source = 6;
+
+  // Free-form JSON bytes. Stored as native BSON in Mongo after one
+  // Unmarshal in the processor.
+  bytes payload = 7;
+}
+
+// Ack is what the server returns per Signal. ACCEPTED is the happy
+// path; the two REJECTED_* values are the backpressure / validation
+// signals — mirror of HTTP's 503 and 400.
+message Ack {
+  string signal_id = 1;
+  AckStatus status = 2;
+  // Human-readable error when status != ACCEPTED. Empty otherwise.
+  string error = 3;
+
+  // Enum values prefixed with the enum name per buf STANDARD lint;
+  // proto3 convention requires the zero value first.
+  enum AckStatus {
+    ACK_STATUS_UNSPECIFIED          = 0;
+    ACK_STATUS_ACCEPTED             = 1;
+    ACK_STATUS_REJECTED_QUEUE_FULL  = 2;
+    ACK_STATUS_REJECTED_INVALID     = 3;
+  }
+}

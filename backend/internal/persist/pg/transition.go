@@ -7,9 +7,30 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kubeboiii/ims/internal/model"
 )
+
+// ErrSerializationFailure is returned when the SERIALIZABLE transaction
+// could not commit because of concurrent activity (Postgres SQLSTATE
+// 40001). Callers — the workflow engine, ultimately the API handler —
+// should treat this as 409 Conflict so the client retries.
+var ErrSerializationFailure = errors.New("pg: serialization failure (40001); retry")
+
+// wrapPgError inspects a pgx-returned error and elevates the well-known
+// codes to our sentinel errors. We only need 40001 for now; future
+// callers can extend this.
+func wrapPgError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "40001" {
+		return fmt.Errorf("%w: %v", ErrSerializationFailure, err)
+	}
+	return err
+}
 
 // BeginTx opens a SERIALIZABLE Postgres transaction and returns a
 // `workItemTx` handle the workflow.Engine drives. SERIALIZABLE is
@@ -73,7 +94,7 @@ func (t *workItemTx) LockWorkItem(ctx context.Context, id uuid.UUID) (model.Work
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.WorkItem{}, ErrNotFound
 		}
-		return model.WorkItem{}, fmt.Errorf("pg: lock work_item: %w", err)
+		return model.WorkItem{}, fmt.Errorf("pg: lock work_item: %w", wrapPgError(err))
 	}
 	wi.ComponentType = model.ComponentType(componentType)
 	wi.Severity = model.Severity(severity)
@@ -108,7 +129,7 @@ func (t *workItemTx) UpdateWorkItemStateAndMTTR(ctx context.Context, wi model.Wo
 		wi.ClosedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("pg: update work_item state: %w", err)
+		return fmt.Errorf("pg: update work_item state: %w", wrapPgError(err))
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
@@ -131,7 +152,7 @@ func (t *workItemTx) InsertStateTransition(ctx context.Context, st model.StateTr
 		st.Reason, st.Actor,
 	)
 	if err != nil {
-		return fmt.Errorf("pg: insert state_transition: %w", err)
+		return fmt.Errorf("pg: insert state_transition: %w", wrapPgError(err))
 	}
 	return nil
 }
@@ -156,16 +177,22 @@ func (t *workItemTx) InsertRCA(ctx context.Context, rca model.RCA) error {
 		rca.SubmittedBy, rca.CreatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("pg: insert rca: %w", err)
+		return fmt.Errorf("pg: insert rca: %w", wrapPgError(err))
 	}
 	return nil
 }
 
 // Commit ends the transaction successfully. After this the rollback
 // `defer` in the engine is a no-op (pgx handles that).
+//
+// Under SERIALIZABLE isolation, the commit itself can fail with
+// SQLSTATE 40001 if Postgres detected concurrent activity that
+// makes our transaction's view stale. wrapPgError surfaces that as
+// ErrSerializationFailure so the API handler returns 409 Conflict
+// rather than a 500.
 func (t *workItemTx) Commit() error {
 	if err := t.tx.Commit(context.Background()); err != nil {
-		return fmt.Errorf("pg: commit: %w", err)
+		return fmt.Errorf("pg: commit: %w", wrapPgError(err))
 	}
 	return nil
 }
