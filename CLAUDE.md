@@ -4,7 +4,7 @@ This file gives Claude Code the operational context for working in this reposito
 
 ## What this project is
 
-A Mission-Critical **Incident Management System (Vellum)** — a backend-heavy distributed system that ingests failure signals at 10K/sec, debounces them into work items, runs them through a state-machine lifecycle with mandatory RCA on closure, and exposes a Next.js dashboard for triage. Built as a 7-day engineering assignment to showcase concurrency, distributed-systems design, and clean code.
+**Vellum — Distributed Signal and Incident Response System.** A backend-heavy distributed system that ingests failure signals at 10K/sec, debounces them into work items via atomic Redis Lua, runs them through a state-machine lifecycle with mandatory RCA on closure, and exposes a Next.js dashboard for triage. Showcases concurrency, distributed-systems design, and clean code.
 
 For the full picture, read in order:
 1. `docs/00-master-prd.md` — what we're building and why (functional + non-functional requirements)

@@ -1,4 +1,4 @@
-# 00 — Master PRD: Mission-Critical Incident Management System
+# 00 — Master PRD: Vellum — Distributed Signal and Incident Response System
 
 > **Document:** `00-master-prd.md`
 > **Version:** 1.0 (draft)
@@ -8,7 +8,7 @@
 
 ## 1. Document Purpose & How to Use It
 
-This is the master Product Requirements Document for an Incident Management System (Vellum) — a backend-heavy distributed system that ingests failure signals from a heterogeneous tech stack, deduplicates and tracks them as work items through a state-machine lifecycle, and exposes a workflow dashboard for human responders. The deliverable is a complete, runnable, containerized application built in seven days as part of an engineering assignment intended to demonstrate concurrency, distributed-systems design, and clean code practices.
+This is the master Product Requirements Document for **Vellum — a Distributed Signal and Incident Response System** — a backend-heavy distributed system that ingests failure signals from a heterogeneous tech stack, deduplicates and tracks them as work items through a state-machine lifecycle, and exposes a workflow dashboard for human responders. The deliverable is a complete, runnable, containerized application that demonstrates concurrency, distributed-systems design, and clean code practices.
 
 This document is the foundation. It defines **what** is being built and **why**. It does not contain code, schemas, or step-by-step build instructions — those live in companion documents. Read this once end-to-end before opening any other document. Re-read sections 4 and 5 (functional and non-functional requirements) before reviewing any code Claude generates; they are the contract.
 

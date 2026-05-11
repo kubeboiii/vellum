@@ -191,7 +191,7 @@ Write `prompts.md` incrementally — one section per phase as that phase closes.
 ## Meta: how I worked with Claude across all 7 phases
 
 1. **`CLAUDE.md` is the operating contract.** Every session referenced it. The tech-stack table, the four design rules, the "ask before doing X" list — all there.
-2. **`STATE.md` is the resume token.** Every session I read it first, every session I updated it at the end. Without it, Claude restarts a 7-day project from scratch each day.
+2. **`STATE.md` is the resume token.** Every session I read it first, every session I updated it at the end. Without it, Claude restarts a project from scratch each day.
 3. **Phase files are the acceptance test.** Each phase had its own `docs/phases/phase-N-*.md` with explicit "done means…" criteria. I refused to merge until every box was ticked.
 4. **`decisions.md` is the rationale graveyard.** 27 entries across the project. Every deviation, every fork-in-the-road, recorded with date + context + alternatives considered.
 5. **Push back on the first attempt 30% of the time.** Not because Claude was wrong, but because the first draft optimized for "looks reasonable" over "honours the four design rules". Re-reading the prompt under the rules usually fixed it.

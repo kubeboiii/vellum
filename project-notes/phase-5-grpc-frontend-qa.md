@@ -222,7 +222,7 @@ nice-to-have; the gate is the server.
 **A:** ~30 lines of straightforward middleware vs adding another
 dependency. Our needs are tiny: one origin (the dashboard), the
 standard methods, Content-Type header. The dep would do exactly the
-same thing with more config knobs. For a 7-day demo with one
+same thing with more config knobs. For this project scope with one
 deployment shape, inline beats lib.
 
 ### Q: Why is the signals endpoint a separate route from the detail

@@ -246,7 +246,7 @@ workflow code + onboarding the team would dwarf the actual work.
 ### Q: We're not enforcing auth on PATCH/POST endpoints. Why?
 **A:** PRD NG1: "Authentication and authorization. The dashboard is
 open. In production this would sit behind SSO; out of scope here."
-For a 7-day demo with no real PII, no real responders, no real
+For this project scope with no real PII, no real responders, no real
 incidents, auth would be theater. In a real system you'd put OIDC in
 front of every PATCH/POST.
 
