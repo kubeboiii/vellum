@@ -30,8 +30,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/kubeboiii/ims/internal/alert"
+	"github.com/kubeboiii/ims/internal/api"
 	"github.com/kubeboiii/ims/internal/debounce"
 	"github.com/kubeboiii/ims/internal/ingest"
+	"github.com/kubeboiii/ims/internal/model"
 	"github.com/kubeboiii/ims/internal/obs"
 	"github.com/kubeboiii/ims/internal/persist/mongo"
 	"github.com/kubeboiii/ims/internal/persist/pg"
@@ -39,6 +42,7 @@ import (
 	"github.com/kubeboiii/ims/internal/persist/timescale"
 	"github.com/kubeboiii/ims/internal/pipeline"
 	"github.com/kubeboiii/ims/internal/processor"
+	"github.com/kubeboiii/ims/internal/workflow"
 )
 
 const (
@@ -58,6 +62,7 @@ const (
 	defaultDebounceWindowSeconds = 10
 	defaultDebounceMaxSignals    = 100
 	defaultDepPingTimeout        = 500 * time.Millisecond
+	defaultAlertTimeout          = 5 * time.Second
 )
 
 func main() {
@@ -119,7 +124,35 @@ func main() {
 		MaxSignals:    cfg.debounceMaxSignals,
 	})
 
-	proc := processor.New(processor.DefaultConfig(), debouncer, workItems, signals, metrics, deadLetter)
+	// Alerter registry per FR-6.2. Slack uses SLACK_WEBHOOK_URL if
+	// set; falls back to console when empty. PagerDuty stub matches P0;
+	// Slack matches P1/P2; everything else (P3 + fallback) lands on
+	// the console alerter.
+	var slackAlerter alert.Alerter = alert.NewSlackAlerter(cfg.slackWebhookURL, cfg.alertTimeout)
+	if cfg.slackWebhookURL == "" {
+		slackAlerter = alert.ConsoleAlerter{}
+		log.Print("alert: SLACK_WEBHOOK_URL unset, P1/P2 alerts will log to console")
+	}
+	alerterRegistry := alert.NewRegistry(
+		map[string]alert.Alerter{
+			"pagerduty_stub": alert.PagerDutyStub{},
+			"slack_webhook":  slackAlerter,
+			"console":        alert.ConsoleAlerter{},
+		},
+		[]alert.Rule{
+			alert.SeverityRule("p0", "pagerduty_stub", model.SeverityP0),
+			alert.SeverityRule("p12", "slack_webhook", model.SeverityP1, model.SeverityP2),
+		},
+	)
+
+	procCfg := processor.DefaultConfig()
+	procCfg.AlertTimeout = cfg.alertTimeout
+	proc := processor.New(procCfg, debouncer, workItems, signals, metrics, deadLetter, alerterRegistry)
+
+	// Workflow engine (Phase 4): handles state transitions in a
+	// SERIALIZABLE Postgres tx + the compound RCA-and-close flow.
+	rcaRepo := pg.NewRCARepository(pgPool)
+	workflowEngine := workflow.NewEngine(pg.NewWorkflowTxRunner(workItems))
 
 	// ---- 3. Pipeline (Phase 2). Plug in the real Processor.
 
@@ -144,6 +177,12 @@ func main() {
 	if err := ingest.RegisterRoutes(v1, pipe, limiter.Middleware()); err != nil {
 		log.Fatalf("ingest routes: %v", err)
 	}
+	// Phase 4 endpoints: incident list/detail + state machine + RCA.
+	api.RegisterRoutes(v1, &api.Handlers{
+		WorkItems: workItems,
+		RCA:       rcaRepo,
+		Engine:    workflowEngine,
+	})
 
 	health := obs.NewHealth(pipe, obs.HealthConfig{
 		Deps: []obs.Pinger{
@@ -219,6 +258,9 @@ type config struct {
 	debounceWindow     int
 	debounceMaxSignals int
 	depPingTimeout     time.Duration
+
+	slackWebhookURL string
+	alertTimeout    time.Duration
 }
 
 func loadConfig() config {
@@ -239,6 +281,9 @@ func loadConfig() config {
 		debounceWindow:     envInt("IMS_DEBOUNCE_WINDOW_SECONDS", defaultDebounceWindowSeconds),
 		debounceMaxSignals: envInt("IMS_DEBOUNCE_MAX_SIGNALS", defaultDebounceMaxSignals),
 		depPingTimeout:     envDur("IMS_DEP_PING_TIMEOUT", defaultDepPingTimeout),
+
+		slackWebhookURL: envOr("SLACK_WEBHOOK_URL", ""),
+		alertTimeout:    envDur("IMS_ALERTER_TIMEOUT", defaultAlertTimeout),
 	}
 }
 

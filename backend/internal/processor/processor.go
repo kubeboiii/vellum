@@ -26,6 +26,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/google/uuid"
 
+	"github.com/kubeboiii/ims/internal/alert"
 	"github.com/kubeboiii/ims/internal/debounce"
 	"github.com/kubeboiii/ims/internal/model"
 )
@@ -65,6 +66,16 @@ type DeadLetter interface {
 	Insert(ctx context.Context, sink string, payload any, err error) error
 }
 
+// AlerterPicker selects the right alert strategy for a Work Item.
+// alert.Registry satisfies it; tests can substitute a fake.
+//
+// We import the alert package directly here — same pattern as
+// importing internal/debounce above. The dependency direction stays
+// inward-only (alert -> nothing in processor; processor -> alert).
+type AlerterPicker interface {
+	ForWorkItem(wi model.WorkItem) alert.Alerter
+}
+
 // ---- Config + constructor ----
 
 // Config bundles the retry knobs from 01-architecture §6.3 and the
@@ -73,15 +84,21 @@ type Config struct {
 	MaxAttempts    int           // total attempts including the first try
 	InitialBackoff time.Duration // base delay; doubles each retry
 	PerSinkTimeout time.Duration // total budget per sink (initial + retries)
+	// AlertTimeout caps the time one alert dispatch can take. FR-6.4:
+	// alerts must not block ingestion or workflow. The processor runs
+	// dispatch in its own goroutine with this deadline.
+	AlertTimeout time.Duration
 }
 
 // DefaultConfig returns the PRD-defined values: 3 attempts (100ms,
-// 200ms, 400ms exponential), 2-second total budget per sink.
+// 200ms, 400ms exponential), 2-second total budget per sink, 5-second
+// alert dispatch timeout.
 func DefaultConfig() Config {
 	return Config{
 		MaxAttempts:    3,
 		InitialBackoff: 100 * time.Millisecond,
 		PerSinkTimeout: 2 * time.Second,
+		AlertTimeout:   5 * time.Second,
 	}
 }
 
@@ -94,6 +111,7 @@ type Processor struct {
 	signals    SignalRepo
 	metrics    MetricsWriter
 	deadLetter DeadLetter
+	alerters   AlerterPicker // nil-safe — pass nil to disable alerting
 
 	// degradedLogged guards us from spamming "redis degraded" logs on
 	// every signal — we want one log per degradation episode, not
@@ -102,8 +120,10 @@ type Processor struct {
 	degradedLogged bool
 }
 
-// New constructs the processor. All collaborators are required.
-func New(cfg Config, d Debouncer, wi WorkItemRepo, sig SignalRepo, mw MetricsWriter, dl DeadLetter) *Processor {
+// New constructs the processor. `alerters` may be nil to disable
+// alert dispatch (e.g., in pre-Phase-4 builds or in tests that don't
+// want to assert on the alert path).
+func New(cfg Config, d Debouncer, wi WorkItemRepo, sig SignalRepo, mw MetricsWriter, dl DeadLetter, alerters AlerterPicker) *Processor {
 	if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = 3
 	}
@@ -113,6 +133,9 @@ func New(cfg Config, d Debouncer, wi WorkItemRepo, sig SignalRepo, mw MetricsWri
 	if cfg.PerSinkTimeout <= 0 {
 		cfg.PerSinkTimeout = 2 * time.Second
 	}
+	if cfg.AlertTimeout <= 0 {
+		cfg.AlertTimeout = 5 * time.Second
+	}
 	return &Processor{
 		cfg:        cfg,
 		debouncer:  d,
@@ -120,6 +143,7 @@ func New(cfg Config, d Debouncer, wi WorkItemRepo, sig SignalRepo, mw MetricsWri
 		signals:    sig,
 		metrics:    mw,
 		deadLetter: dl,
+		alerters:   alerters,
 	}
 }
 
@@ -158,7 +182,35 @@ func (p *Processor) Process(ctx context.Context, sig model.Signal) error {
 	p.writePostgres(ctx, sig, res)
 	p.writeMongo(ctx, sig, res.WorkItemID)
 	p.writeTimescale(ctx, sig, res.WorkItemID)
+
+	// 3. Alert dispatch (CREATED only — JOINED reuses the same
+	//    work_item so no fresh alert). Fired asynchronously per
+	//    FR-6.4: a slow Slack webhook MUST NOT block the worker.
+	//    The dispatched goroutine has its own ctx with a 5s budget
+	//    so it can't pile up if the alerter wedges.
+	if p.alerters != nil && res.Action == debounce.ActionCreated {
+		wi := model.NewWorkItem(res.WorkItemID, sig)
+		p.dispatchAlert(wi)
+	}
 	return nil
+}
+
+// dispatchAlert runs the alerter for a freshly-created WI in a new
+// goroutine with its own timeout. Errors are logged but never
+// dead-lettered — alerts are FYI, not source of truth.
+func (p *Processor) dispatchAlert(wi model.WorkItem) {
+	alerter := p.alerters.ForWorkItem(wi)
+	if alerter == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), p.cfg.AlertTimeout)
+		defer cancel()
+		if err := alerter.Dispatch(ctx, wi); err != nil {
+			log.Printf("processor: alerter %s failed for work_item_id=%s: %v",
+				alerter.Name(), wi.ID, err)
+		}
+	}()
 }
 
 // writePostgres writes either a new work_items row (CREATED) or bumps

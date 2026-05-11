@@ -350,6 +350,102 @@
 
 ---
 
+## 2026-05-11 — Phase 4: State pattern via interface, one concrete type per state
+
+**Context:** The Work Item lifecycle (OPEN→INVESTIGATING→RESOLVED→CLOSED) needs to be encoded so that (a) the rules are easy to reason about, (b) adding a state is a one-file change, and (c) the rubric's explicit "LLD: State pattern" line is satisfied.
+
+**Decision:** A `workflow.State` interface with three methods (`Name`, `CanTransitionTo`, `OnEnter`) and four concrete types (`OpenState`, `InvestigatingState`, `ResolvedState`, `ClosedState`). State-specific behaviour lives in the type. `ResolvedState.CanTransitionTo(ClosedState, ctx)` is the ONE place the "RCA required" rule (CLAUDE.md design rule 3) is enforced.
+
+**Why:** Concrete types per state give us natural method receivers for state-specific behaviour. `ClosedState.OnEnter` computes MTTR; no other state needs it; the code lives with the state. A reviewer asking "where do we enforce the RCA rule?" finds one Go file with one method. Switch-based alternatives would scatter the rule across the workflow engine + every place that "decides to close" something.
+
+**Alternatives considered:**
+- Single State struct with a `name` field + lookup tables — smaller code but loses room for state-specific OnEnter side effects (MTTR).
+- Pure data table (map of allowed transitions) — even smaller; can't carry OnEnter logic at all.
+
+**Impact:** Phase 5's "ACKNOWLEDGED" or "REOPENED" state (if we add it as a bonus) is one new file. The State pattern is the largest single rubric category (LLD = 20%) so this defense matters.
+
+---
+
+## 2026-05-11 — Phase 4: SERIALIZABLE isolation + SELECT FOR UPDATE for state transitions
+
+**Context:** Two concurrent `PATCH .../state` requests on the same WI must NOT both succeed. The state machine in code is consistent, but without DB-level locking the second request could read the row before the first commits and both insert state_transition audit rows.
+
+**Decision:** The workflow engine's `Transition` method opens a SERIALIZABLE pgx tx, runs `SELECT ... FROM work_items WHERE id = $1 FOR UPDATE`, evaluates the State pattern, writes both the UPDATE and the INSERT (audit row), then commits. SERIALIZABLE protects against phantom reads on `state_transitions`; SELECT FOR UPDATE locks the work_items row so a concurrent transaction blocks until we finish.
+
+**Why:** Concurrency contention is low (transitions are human-driven, not high-frequency), so the perf cost of SERIALIZABLE is negligible. The audit table needs phantom-read protection — at READ COMMITTED, two concurrent CLOSEs could both insert "OPEN→CLOSED" audit rows for what is logically one transition. SERIALIZABLE + row lock = exactly one wins, the other returns 409.
+
+**Alternatives considered:**
+- READ COMMITTED + optimistic version column on work_items — viable but adds app-side retry on serialization conflicts.
+- Application-level mutex per work_item_id — doesn't survive multi-replica deploys.
+
+**Impact:** Verified via `TestEngine_ConcurrentClose_ExactlyOneWins` (2 goroutines, same WI, both with valid RCAs → exactly 1 success, exactly 1 rca row, exactly 1 final transition).
+
+---
+
+## 2026-05-11 — Phase 4: compound POST /rca endpoint atomically closes the work item
+
+**Context:** Submitting an RCA is logically two operations: (a) insert the rca row, (b) transition RESOLVED→CLOSED. Doing them in separate transactions opens a window where the RCA exists but the WI is still RESOLVED (or vice versa).
+
+**Decision:** `workflow.Engine.CloseWithRCA` runs both writes (INSERT rca + UPDATE work_items + INSERT state_transition) in the SAME SERIALIZABLE transaction. The State pattern still gates the close — `ResolvedState.CanTransitionTo(ClosedState, ctx)` runs inside the tx, so the "RCA must be valid" rule fires before any rows are persisted.
+
+**Why:** Atomicity for the user-visible contract. If a reviewer's POST /rca returns 201, both rows exist; if it returns anything else, neither exists. No "half closed" states, no orphaned RCAs.
+
+**Alternatives considered:**
+- Two endpoints (POST /rca to insert, PATCH /state to close) — what 03-api-contract draft originally suggested. Loses atomicity; the client has to coordinate.
+- Saga with compensating delete — vastly over-engineered for one tx-scoped pair of writes.
+
+**Impact:** Single endpoint, single transaction, no race window. The State pattern's enforcement is unchanged — RCA validation is still the SAME code path as a hypothetical PATCH state=CLOSED.
+
+---
+
+## 2026-05-11 — Phase 4: alerter dispatch is fire-and-forget in a goroutine, NOT retryable
+
+**Context:** Alerts on Work Item creation are FYI — they tell humans something happened. If the alerter is slow or down, the worker should not pile up on it.
+
+**Decision:** `processor.dispatchAlert(wi)` runs in a fresh goroutine with its own 5-second timeout context (FR-6.4). Errors are logged but never returned to the worker, never dead-lettered. A slow Slack webhook does not block the next signal.
+
+**Why:** FR-6.4 is explicit: "a failing alerter cannot block ingestion or workflow." Retrying alerts via the sink-style backoff path would create exactly the failure mode the requirement prohibits. Alerts are not source of truth; if PagerDuty was down for 30 seconds, you don't want to fire 30 seconds of catch-up pages — you want to skip.
+
+**Alternatives considered:**
+- Retry+backoff like Mongo/Postgres writes — wrong semantics, violates FR-6.4.
+- Push to a dedicated bounded "alerts channel" with its own worker pool — over-engineered for v1, debounced creates are rare.
+
+**Impact:** One goroutine per CREATED work item (~10/sec at debounced steady state). At 10K signals/sec the debounce reduction ratio means we still create ≤ 100 work items/sec under load — well under "10K extra goroutines/sec" worry.
+
+---
+
+## 2026-05-11 — Phase 4: workflow.TxRunner adapter pattern (pg.WorkflowTxRunner)
+
+**Context:** Go's structural interface satisfaction works for *values* but not for *return types*. `pg.WorkItemRepository.BeginTx` returns `*workItemTx` (concrete); `workflow.TxRunner.BeginTx` expects `workflow.Tx` (interface). Even though `*workItemTx` satisfies `workflow.Tx`, the method signatures don't match exactly.
+
+**Decision:** Introduce `pg.WorkflowTxRunner` as a thin adapter: holds a `*WorkItemRepository`, its `BeginTx` delegates and returns the result typed as `workflow.Tx` (the interface). main.go does `workflow.NewEngine(pg.NewWorkflowTxRunner(workItems))`.
+
+**Why:** The adapter is 25 lines and makes the conversion explicit. Alternatives — changing pg.BeginTx's signature to return `workflow.Tx`, or generics — would either tightly couple pg to workflow or add complexity for a one-off conversion.
+
+**Alternatives considered:**
+- Change `pg.WorkItemRepository.BeginTx` signature to return `workflow.Tx` directly — couples the persistence package to the workflow interface. Bad direction.
+- Use Go generics — overkill for a single adapter.
+
+**Impact:** One small adapter file. Phase 5's gRPC server (if it adds another workflow operation) can wire through the same `WorkflowTxRunner`.
+
+---
+
+## 2026-05-11 — Phase 4: API package separate from internal/ingest
+
+**Context:** Phase 2 put HTTP handlers in `internal/ingest`. Phase 4 added 4 new endpoints (incidents list/detail + state PATCH + RCA POST) — do they go in ingest too, or get their own package?
+
+**Decision:** New `internal/api` package. ingest stays for ingestion-only handlers (POST /v1/signals) which have a different lifecycle (rate-limited, hot path, non-blocking enqueue). api has handlers that operate on stored data via workflow.Engine and the pg repos.
+
+**Why:** Different concerns + different dependencies. `ingest` only needs `pipeline.Submitter`; `api` needs `workflow.Engine` + `pg.WorkItemRepository` + `pg.RCARepository`. Putting them in one package would muddle the dependency graph and force ingest to import workflow (which it shouldn't).
+
+**Alternatives considered:**
+- One big `internal/api` package containing both — heavier deps for the hot-path handler.
+- Per-endpoint packages — too granular.
+
+**Impact:** `internal/api` has no test file yet — the workflow-tx integration tests in `internal/persist/pg/transition_test.go` exercise the same code paths through the engine. Phase 5 or 6 may add httptest-style handler tests.
+
+---
+
 <!--
 TEMPLATE for new entries — copy and fill in:
 
