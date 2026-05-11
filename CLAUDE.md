@@ -9,9 +9,8 @@ A Mission-Critical **Incident Management System (Vellum)** — a backend-heavy d
 For the full picture, read in order:
 1. `docs/00-master-prd.md` — what we're building and why (functional + non-functional requirements)
 2. `docs/01-architecture.md` — how it's built (runtime topology, design patterns, failure modes)
-3. `docs/02-data-models.md` — schemas (Postgres, Mongo, Redis, Timescale, proto)
-4. `docs/03-api-contract.md` — every HTTP and gRPC endpoint
-5. `docs/phases/phase-N-*.md` — the day-by-day build prompts
+3. `docs/decisions.md` — every non-obvious choice, with rationale
+4. `docs/prompts.md` — per-phase narrative of what was asked of Claude
 
 **Never re-derive requirements. Always reference the PRD by section number.**
 
@@ -139,15 +138,6 @@ cd frontend && pnpm dev
 # Apply pending migrations
 migrate -path backend/migrations -database "$DATABASE_URL" up
 ```
-
-## Working with phase files
-
-This project is built in 7 daily phases. Each phase has its own file in `docs/phases/`. When the user references a phase ("let's do phase 3"), do the following:
-
-1. Read the phase file end-to-end before writing any code
-2. Verify the previous phase's acceptance criteria are met (or ask the user)
-3. Stay strictly within the phase's scope. Refuse to add features marked "out of scope."
-4. After completion, write a brief summary to `docs/decisions.md` of any non-obvious choices made
 
 ## Things to ask before doing
 

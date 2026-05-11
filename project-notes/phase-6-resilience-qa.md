@@ -1,6 +1,6 @@
 # Phase 6 — Resilience & Simulation: Q&A Study Guide
 
-> Companion to `docs/phases/phase-6-resilience-simulation.md`. Read alongside the actual code at `backend/internal/debounce/stress_test.go`, `backend/internal/e2e_integration_test.go`, and `scripts/simulate-outage.go`.
+> Read alongside the actual code at `backend/internal/debounce/stress_test.go`, `backend/internal/e2e_integration_test.go`, and `scripts/simulate-outage.go`.
 
 ## What we built
 
