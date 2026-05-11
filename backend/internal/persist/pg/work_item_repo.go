@@ -10,37 +10,19 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// WorkItemRepository is the gateway for everything that mutates or
-// reads the `work_items` table. Defined as a struct (not an interface)
-// here because Go's idiom is to define interfaces where they're
-// CONSUMED — the processor package and the workflow package (Phase 4)
-// will each define narrow interfaces that this struct happens to
-// satisfy.
 type WorkItemRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewWorkItemRepository wires the repo to a live pool.
 func NewWorkItemRepository(pool *pgxpool.Pool) *WorkItemRepository {
 	return &WorkItemRepository{pool: pool}
 }
 
-// ErrNotFound is returned when an Update affects 0 rows. Surfaces as a
-// "lost the debounce race" condition: the row we expected to UPDATE
-// doesn't exist (could be because the window expired and the cache
-// pointed at a now-deleted work_item — unlikely in practice but worth
-// handling cleanly).
 var ErrNotFound = errors.New("pg: work item not found")
 
-// Insert writes a new work_items row in OPEN state. The ID is provided
-// by the caller (it's the candidate UUID the processor sent to the
-// Redis Lua script). Returns an error if the insert fails for any
-// reason; uniqueness is enforced by the PRIMARY KEY constraint, so
-// re-inserting the same ID would conflict — that's a logic bug on the
-// caller side, not something we silently swallow.
 func (r *WorkItemRepository) Insert(ctx context.Context, wi model.WorkItem) error {
 	const q = `
 		INSERT INTO work_items (
@@ -60,15 +42,6 @@ func (r *WorkItemRepository) Insert(ctx context.Context, wi model.WorkItem) erro
 	return nil
 }
 
-// IncrementSignalCount bumps signal_count by 1 and refreshes
-// last_signal_ts. Called when the Lua debounce script returns
-// action=JOINED.
-//
-// We do this with an UPDATE rather than re-fetching + re-saving because
-// (a) it's one network round-trip instead of two, and (b) it's
-// concurrency-safe at the row level — Postgres serializes the writes
-// to the same row via per-row locks. Concurrent JOINED updates from
-// multiple workers can't lose a count.
 func (r *WorkItemRepository) IncrementSignalCount(ctx context.Context, id uuid.UUID, signalTS time.Time) error {
 	const q = `
 		UPDATE work_items
@@ -77,10 +50,7 @@ func (r *WorkItemRepository) IncrementSignalCount(ctx context.Context, id uuid.U
 		       updated_at     = now()
 		 WHERE id = $1
 	`
-	// GREATEST guards against out-of-order signals arriving at workers
-	// (they're parallel — signal B accepted before A may be processed
-	// after A). last_signal_ts should monotonically reflect the
-	// wall-clock latest signal, not the latest-to-arrive.
+
 	tag, err := r.pool.Exec(ctx, q, id, signalTS)
 	if err != nil {
 		return fmt.Errorf("pg: increment signal_count: %w", err)
@@ -91,9 +61,6 @@ func (r *WorkItemRepository) IncrementSignalCount(ctx context.Context, id uuid.U
 	return nil
 }
 
-// CountByComponent is a test/acceptance helper: how many open work_items
-// exist for this component_id. Used by the Phase 3 acceptance demo to
-// prove "200 signals → 1-3 work_items". Not on the hot path.
 func (r *WorkItemRepository) CountByComponent(ctx context.Context, componentID string) (int, error) {
 	const q = `SELECT COUNT(*) FROM work_items WHERE component_id = $1`
 	var n int
@@ -104,10 +71,8 @@ func (r *WorkItemRepository) CountByComponent(ctx context.Context, componentID s
 	return n, nil
 }
 
-// Ping is the /health probe. Honors the supplied context timeout.
 func (r *WorkItemRepository) Ping(ctx context.Context) error {
 	return r.pool.Ping(ctx)
 }
 
-// Name identifies this dep in /health responses.
 func (r *WorkItemRepository) Name() string { return "postgres" }

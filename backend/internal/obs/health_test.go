@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kubeboiii/ims/internal/model"
-	"github.com/kubeboiii/ims/internal/pipeline"
+	"github.com/kubeboiii/vellum/internal/model"
+	"github.com/kubeboiii/vellum/internal/pipeline"
 )
 
 func newPipe(t *testing.T, cap int) *pipeline.Pipeline {
@@ -23,9 +23,6 @@ func newPipe(t *testing.T, cap int) *pipeline.Pipeline {
 	return p
 }
 
-// stubPinger lets tests drive the Pinger.Ping return value without
-// spinning up a real DB. nameFn parameterises so multiple stubs can
-// coexist.
 type stubPinger struct {
 	name string
 	err  error
@@ -61,7 +58,7 @@ func TestHealth_HealthyByDefault(t *testing.T) {
 func TestHealth_DegradedWhenQueueAbove95Pct(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	p := newPipe(t, 10)
-	// Submit 10 onto a capacity-10 queue with 0 workers → 100% full → degraded.
+
 	for i := 0; i < 10; i++ {
 		p.Submit(model.Signal{})
 	}
@@ -76,7 +73,6 @@ func TestHealth_DegradedWhenQueueAbove95Pct(t *testing.T) {
 	}
 }
 
-// TestHealth_AllDepsUp: registered pingers all healthy → 200 healthy.
 func TestHealth_AllDepsUp(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	p := newPipe(t, 10)
@@ -111,7 +107,6 @@ func TestHealth_AllDepsUp(t *testing.T) {
 	}
 }
 
-// TestHealth_CriticalDepDown_Returns503: Postgres down → 503.
 func TestHealth_CriticalDepDown_Returns503(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	p := newPipe(t, 10)
@@ -131,9 +126,6 @@ func TestHealth_CriticalDepDown_Returns503(t *testing.T) {
 	}
 }
 
-// TestHealth_NonCriticalDepDown_Returns200Degraded: Redis (non-critical)
-// down → status="degraded" but HTTP 200. The system can still process
-// signals via the FR-3.6 fallback.
 func TestHealth_NonCriticalDepDown_Returns200Degraded(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	p := newPipe(t, 10)

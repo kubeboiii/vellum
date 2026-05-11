@@ -10,11 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/kubeboiii/ims/internal/debounce"
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/debounce"
+	"github.com/kubeboiii/vellum/internal/model"
 )
-
-// ---- Fakes (one per consumed interface) ----
 
 type fakeDebouncer struct {
 	result debounce.Result
@@ -29,7 +27,7 @@ func (f *fakeDebouncer) Process(_ context.Context, _ string) (debounce.Result, e
 
 type fakeWorkItems struct {
 	insertErr     error
-	insertErrOnce bool // if true, insertErr fires only on the first attempt
+	insertErrOnce bool
 	incrementErr  error
 	inserts       atomic.Int64
 	increments    atomic.Int64
@@ -107,7 +105,6 @@ func (f *fakeDeadLetter) count(sink string) int {
 	return n
 }
 
-// fastConfig: 10ms backoff so retry tests don't take seconds.
 func fastConfig() Config {
 	return Config{
 		MaxAttempts:    3,
@@ -127,9 +124,6 @@ func sampleSignal() model.Signal {
 	}
 }
 
-// ---- Tests ----
-
-// TestProcess_CreatedFlow: action=CREATED → wi.Insert called, NOT increment.
 func TestProcess_CreatedFlow(t *testing.T) {
 	wiID := uuid.New()
 	d := &fakeDebouncer{result: debounce.Result{
@@ -159,7 +153,6 @@ func TestProcess_CreatedFlow(t *testing.T) {
 	}
 }
 
-// TestProcess_JoinedFlow: action=JOINED → IncrementSignalCount, NOT Insert.
 func TestProcess_JoinedFlow(t *testing.T) {
 	d := &fakeDebouncer{result: debounce.Result{
 		WorkItemID: uuid.New(), Action: debounce.ActionJoined, Count: 2,
@@ -179,9 +172,6 @@ func TestProcess_JoinedFlow(t *testing.T) {
 	}
 }
 
-// TestProcess_RedisDegradedKeepsGoing: when the debouncer returns
-// ErrRedisDegraded, processor should still fan out using the fallback
-// CREATED result.
 func TestProcess_RedisDegradedKeepsGoing(t *testing.T) {
 	d := &fakeDebouncer{
 		result: debounce.Result{
@@ -200,8 +190,6 @@ func TestProcess_RedisDegradedKeepsGoing(t *testing.T) {
 	}
 }
 
-// TestProcess_RetryOnFlakyPostgres: Postgres fails the first attempt
-// then succeeds. Should NOT dead-letter. Should call Insert twice.
 func TestProcess_RetryOnFlakyPostgres(t *testing.T) {
 	d := &fakeDebouncer{result: debounce.Result{
 		WorkItemID: uuid.New(), Action: debounce.ActionCreated, Count: 1,
@@ -224,8 +212,6 @@ func TestProcess_RetryOnFlakyPostgres(t *testing.T) {
 	}
 }
 
-// TestProcess_DeadLetterOnExhaustion: persistent Postgres failure →
-// after MaxAttempts retries, the record lands in dead_letter.
 func TestProcess_DeadLetterOnExhaustion(t *testing.T) {
 	d := &fakeDebouncer{result: debounce.Result{
 		WorkItemID: uuid.New(), Action: debounce.ActionCreated, Count: 1,
@@ -240,16 +226,12 @@ func TestProcess_DeadLetterOnExhaustion(t *testing.T) {
 	if dl.count("postgres") != 1 {
 		t.Errorf("postgres dead-letters: want 1, got %d", dl.count("postgres"))
 	}
-	// Mongo + Timescale should still have succeeded — one bad sink
-	// doesn't take down the others.
+
 	if dl.count("mongo") != 0 || dl.count("timescale") != 0 {
 		t.Errorf("other sinks dead-lettered unexpectedly: %+v", dl.records)
 	}
 }
 
-// TestProcess_DebouncerHardError: when the debouncer returns an
-// unexpected (non-degraded) error, we can't proceed and Process must
-// return the error so the pipeline counts it.
 func TestProcess_DebouncerHardError(t *testing.T) {
 	d := &fakeDebouncer{err: errors.New("script gone")}
 	p := New(fastConfig(), d, &fakeWorkItems{}, &fakeSignals{}, &fakeMetrics{}, &fakeDeadLetter{}, nil)

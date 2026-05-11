@@ -1,10 +1,3 @@
-// THEME.md §7.2 / PRD FR-7.2 — state-transition timeline.
-//
-// Vertical timeline of audit rows: dot + label per step. Reused on
-// detail + closed-incident pages. The dot color matches the
-// to_state's state-pill color so the eye can scan the timeline and
-// spot regressions / abnormal patterns at a glance.
-
 import type { StateTransition, Status } from "@/lib/types";
 
 const dotColor: Record<Status, string> = {
@@ -16,8 +9,7 @@ const dotColor: Record<Status, string> = {
 
 interface TimelineProps {
   transitions: StateTransition[];
-  // empty: rendered text when transitions list is empty (e.g. WI is
-  // still OPEN and has no history yet).
+
   empty?: string;
 }
 
@@ -40,14 +32,14 @@ export function Timeline({ transitions, empty = "No transitions yet." }: Timelin
           key={t.id}
           className="relative grid grid-cols-[16px_1fr] gap-3 px-4 py-2"
         >
-          {/* Vertical thread — connects the dots. */}
+          {}
           {i < transitions.length - 1 && (
             <span
               className="absolute left-[20px] top-7 h-full w-px bg-border-subtle"
               aria-hidden
             />
           )}
-          {/* Dot keyed to the to_state's color. */}
+          {}
           <span
             className={`mt-1 h-2 w-2 self-start rounded-full ${dotColor[t.to_state]}`}
             aria-hidden

@@ -1,11 +1,3 @@
-// THEME.md §7.2 — Incident detail page (two-column).
-//
-// Left (3/5): summary card, RCA panel (if CLOSED), state transitions.
-// Right (2/5): scrollable signal list with expandable JSON payloads.
-//
-// All Client-side — PATCH /state needs onClick + state-machine
-// state across renders.
-
 "use client";
 
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
@@ -42,10 +34,6 @@ import type {
   StateTransition,
 } from "@/lib/types";
 
-// nextLegalStates mirrors the State pattern's CanTransitionTo rules.
-// CLOSED is reached only via POST /rca, so it's intentionally absent
-// from RESOLVED's list — the page shows a "Submit RCA →" button
-// instead.
 const nextLegalStates: Record<Status, Status[]> = {
   OPEN: ["INVESTIGATING"],
   INVESTIGATING: ["RESOLVED"],
@@ -59,10 +47,7 @@ export default function IncidentDetailPage() {
 
   const [data, setData] = useState<IncidentDetailResponse | null>(null);
   const [signals, setSignals] = useState<SignalsPageResponse | null>(null);
-  // bulkSignals is a separate buffer used by the histogram &
-  // fingerprint widgets — they need a wider window than the
-  // paginated `signals` list shows. Fetched lazily to avoid bloat
-  // on incidents with thousands of signals.
+
   const [bulkSignals, setBulkSignals] = useState<Signal[] | null>(null);
   const [fpFilter, setFpFilter] = useState<string | null>(null);
   const [transitions, setTransitions] = useState<StateTransition[]>([]);
@@ -86,9 +71,6 @@ export default function IncidentDetailPage() {
     }
   }, [id]);
 
-  // Fetch up to 150 signals once on first mount for the widgets.
-  // We don't refetch on state advances — the timeline data shape
-  // doesn't change just because someone clicked "advance".
   useEffect(() => {
     let cancelled = false;
     listSignalsBulk(id, 3, 50)
@@ -96,8 +78,7 @@ export default function IncidentDetailPage() {
         if (!cancelled) setBulkSignals(sigs);
       })
       .catch(() => {
-        // If the bulk fetch fails, the regular `signals` page
-        // already covers the raw-signal list; widgets just hide.
+
       });
     return () => {
       cancelled = true;
@@ -115,9 +96,7 @@ export default function IncidentDetailPage() {
       await reload();
       toast.push("success", `→ ${to}`);
     } catch (e) {
-      // The 409 / 422 / 500 distinction is in APIError.status; toast
-      // surfaces it as the message so the user can read what went
-      // wrong without opening devtools.
+
       const msg =
         e instanceof APIError ? `Transition rejected (${e.status}): ${e.message}` : (e as Error).message;
       setError(msg);
@@ -175,10 +154,9 @@ export default function IncidentDetailPage() {
         )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-          {/* ───────────── LEFT 3/5 ───────────── */}
+          {}
           <div className="space-y-4 lg:col-span-3">
-            {/* Summary card — lime hover glow to match landing-page
-                card pattern (StatCard, Capabilities). */}
+            {}
             <section
               className="rounded-md border border-border-subtle bg-bg-surface p-4 transition-[border-color,box-shadow] duration-base ease-out hover:border-border-strong"
               onMouseEnter={(e) => {
@@ -221,7 +199,7 @@ export default function IncidentDetailPage() {
                 )}
               </dl>
 
-              {/* Action row */}
+              {}
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3">
                 {nextStates.map((to) => (
                   <Button
@@ -246,16 +224,13 @@ export default function IncidentDetailPage() {
               </div>
             </section>
 
-            {/* Horizontal transition timeline — the "at a glance"
-                view. Vertical Timeline below has the detail. */}
+            {}
             <TransitionTimeline work_item={wi} transitions={transitions} />
 
-            {/* Time-in-each-state breakdown. Surfaces "where the
-                time actually went" for post-mortem authors. */}
+            {}
             <TimeInState work_item={wi} transitions={transitions} />
 
-            {/* Signal-shape & frequency analysis. Hidden until the
-                bulk fetch lands. */}
+            {}
             {bulkSignals && bulkSignals.length > 0 && (
               <>
                 <SignalFrequency signals={bulkSignals} />
@@ -267,9 +242,7 @@ export default function IncidentDetailPage() {
               </>
             )}
 
-            {/* Timeline panel — state-transition audit log
-                (FR-7.2). Always rendered; empty state for OPEN
-                incidents that haven't transitioned yet. */}
+            {}
             <section
               className="overflow-hidden rounded-md border border-border-subtle bg-bg-surface transition-[border-color,box-shadow] duration-base ease-out hover:border-border-strong"
               onMouseEnter={(e) => {
@@ -292,7 +265,7 @@ export default function IncidentDetailPage() {
               />
             </section>
 
-            {/* RCA panel (if present) */}
+            {}
             {data.rca && (
               <section
                 className="rounded-md border border-border-subtle bg-bg-surface p-4 transition-[border-color,box-shadow] duration-base ease-out hover:border-border-strong"
@@ -326,7 +299,7 @@ export default function IncidentDetailPage() {
             )}
           </div>
 
-          {/* ───────────── RIGHT 2/5 ───────────── */}
+          {}
           <div className="space-y-4 lg:col-span-2">
             <section
               className="overflow-hidden rounded-md border border-border-subtle bg-bg-surface transition-[border-color,box-shadow] duration-base ease-out hover:border-border-strong"
@@ -374,8 +347,6 @@ export default function IncidentDetailPage() {
     </div>
   );
 }
-
-// ---- helpers / sub-components ----
 
 function BackLink() {
   return (

@@ -1,4 +1,4 @@
-# IMS — Mission-Critical Incident Management System
+# Vellum — Mission-Critical Incident Management System
 
 > **Ingests failure signals at 10K/sec, debounces them into work items via atomic Redis Lua, runs them through a state-machine lifecycle with mandatory RCA on closure, and surfaces them through a Next.js triage dashboard.**
 
@@ -41,11 +41,11 @@ docker compose -f docker/compose.yaml up -d
 docker compose -f docker/compose.yaml ps
 
 # 3. Apply SQL migrations (creates work_items, state_transitions, signal_metrics hypertable).
-export DATABASE_URL="postgres://ims:ims@localhost:5432/ims?sslmode=disable"
+export DATABASE_URL="postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable"
 migrate -path backend/migrations -database "$DATABASE_URL" up
 
 # 4. Run the backend on :8080.
-cd backend && go run ./cmd/ims
+cd backend && go run ./cmd/vellum
 # -> curl http://localhost:8080/health  =>  200, all deps `up` with latencies
 # -> curl -X POST http://localhost:8080/v1/signals \
 #         -H 'Content-Type: application/json' \
@@ -70,7 +70,7 @@ docker compose -f docker/compose.yaml down -v    # nuke volumes
 See `01-architecture.md` §10. High-level:
 
 ```
-backend/   Go service (cmd/ims, internal/{ingest,pipeline,debounce,workflow,...})
+backend/   Go service (cmd/vellum, internal/{ingest,pipeline,debounce,workflow,...})
 frontend/  Next.js 14 dashboard (App Router, Tailwind, shadcn/ui)
 docker/    compose.yaml + init.sql for the Postgres+Timescale container
 docs/      PRD, architecture, phase files, decisions log
@@ -98,7 +98,7 @@ in `docs/decisions.md`.**
 
 - [x] `docker compose -f docker/compose.yaml up` brings Postgres (with the
       TimescaleDB extension loaded), MongoDB, and Redis to a `healthy` state.
-- [x] `cd backend && go run ./cmd/ims` starts a Gin server on `:8080`.
+- [x] `cd backend && go run ./cmd/vellum` starts a Gin server on `:8080`.
 - [x] `curl http://localhost:8080/health` returns `200 OK`.
 - [x] `cd frontend && pnpm build` succeeds.
 - [x] `cd backend && go test -race ./...` passes.
@@ -125,7 +125,7 @@ in `docs/decisions.md`.**
 - [x] Stdout metrics line every 5s: `[metrics] accepted=X/s processed=Y/s
       queue=D/C errors=E/s total_accepted=… total_dropped=…`.
 - [x] Graceful shutdown on SIGINT/SIGTERM: HTTP listener stops first,
-      then the pipeline drains within `IMS_SHUTDOWN_TIMEOUT` (default 30s).
+      then the pipeline drains within `VELLUM_SHUTDOWN_TIMEOUT` (default 30s).
 - [x] **Load test:** `./scripts/load-test.sh` reports 10,000 req/s sustained
       for 60s, 100% success, p99 = 1.89 ms (target ≤ 50 ms), 0 dropped.
 
@@ -133,19 +133,19 @@ in `docs/decisions.md`.**
 
 | Var | Default | Purpose |
 |---|---|---|
-| `IMS_HTTP_ADDR` | `:8080` | bind address |
-| `IMS_QUEUE_CAPACITY` | `50000` | bounded-channel depth (~5s of nominal at 10K/s) |
-| `IMS_WORKER_COUNT` | `NumCPU()*2` | consumer goroutines |
-| `IMS_RATE_LIMIT_RPS` | `1000` | per-source token refill rate (FR-1.6) |
-| `IMS_RATE_LIMIT_BURST` | `2000` | per-source burst tolerance |
-| `IMS_METRICS_INTERVAL` | `5s` | stdout metrics cadence (FR-8.2) |
-| `IMS_SHUTDOWN_TIMEOUT` | `30s` | drain deadline (NFR-2.4) |
+| `VELLUM_HTTP_ADDR` | `:8080` | bind address |
+| `VELLUM_QUEUE_CAPACITY` | `50000` | bounded-channel depth (~5s of nominal at 10K/s) |
+| `VELLUM_WORKER_COUNT` | `NumCPU()*2` | consumer goroutines |
+| `VELLUM_RATE_LIMIT_RPS` | `1000` | per-source token refill rate (FR-1.6) |
+| `VELLUM_RATE_LIMIT_BURST` | `2000` | per-source burst tolerance |
+| `VELLUM_METRICS_INTERVAL` | `5s` | stdout metrics cadence (FR-8.2) |
+| `VELLUM_SHUTDOWN_TIMEOUT` | `30s` | drain deadline (NFR-2.4) |
 
 ### Running the load test yourself
 
 ```bash
 # Terminal 1 — boot the backend with rate limit lifted for single-host benchmark
-cd backend && IMS_RATE_LIMIT_RPS=20000 IMS_RATE_LIMIT_BURST=40000 go run ./cmd/ims
+cd backend && VELLUM_RATE_LIMIT_RPS=20000 VELLUM_RATE_LIMIT_BURST=40000 go run ./cmd/vellum
 
 # Terminal 2 — run vegeta
 ./scripts/load-test.sh   # RATE=10000 DURATION=60s
@@ -185,13 +185,13 @@ The script writes vegeta artifacts to `.loadtest/` (gitignored).
 
 | Var | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `postgres://ims:ims@localhost:5432/ims?sslmode=disable` | pgx pool DSN |
-| `MONGO_URI` | `mongodb://ims:ims@localhost:27017/ims?authSource=admin` | mongo client URI |
-| `MONGO_DATABASE` | `ims` | mongo logical database |
+| `DATABASE_URL` | `postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable` | pgx pool DSN |
+| `MONGO_URI` | `mongodb://vellum:vellum@localhost:27017/vellum?authSource=admin` | mongo client URI |
+| `MONGO_DATABASE` | `vellum` | mongo logical database |
 | `REDIS_ADDR` | `localhost:6379` | redis address |
-| `IMS_DEBOUNCE_WINDOW_SECONDS` | `10` | FR-3.1 |
-| `IMS_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
-| `IMS_DEP_PING_TIMEOUT` | `500ms` | per-dep /health budget |
+| `VELLUM_DEBOUNCE_WINDOW_SECONDS` | `10` | FR-3.1 |
+| `VELLUM_DEBOUNCE_MAX_SIGNALS` | `100` | FR-3.1 |
+| `VELLUM_DEP_PING_TIMEOUT` | `500ms` | per-dep /health budget |
 
 ## Phase 4 acceptance (Workflow Engine)
 
@@ -229,7 +229,7 @@ The script writes vegeta artifacts to `.loadtest/` (gitignored).
 | Var | Default | Purpose |
 |---|---|---|
 | `SLACK_WEBHOOK_URL` | (empty) | If set, P1/P2 alerts HTTP POST here. Else Console. |
-| `IMS_ALERTER_TIMEOUT` | `5s` | Per-dispatch timeout (FR-6.4). |
+| `VELLUM_ALERTER_TIMEOUT` | `5s` | Per-dispatch timeout (FR-6.4). |
 
 ### Try the PRD G3 scenario yourself
 
@@ -271,7 +271,7 @@ Phase 5 dashboard to consume; the dashboard itself ships in Phase 5.
 
 ## Phase 5 acceptance (gRPC + Frontend)
 
-- [x] `backend/proto/ims/v1/signals.proto` defines bidi-stream
+- [x] `backend/proto/vellum/v1/signals.proto` defines bidi-stream
       `SignalService.IngestSignals`. `buf generate` (local plugins)
       produces `signals.pb.go` + `signals_grpc.pb.go`.
 - [x] gRPC server on `:9090` shares the same `pipeline.Pipeline` as
@@ -304,8 +304,8 @@ Phase 5 dashboard to consume; the dashboard itself ships in Phase 5.
 
 | Var | Default | Purpose |
 |---|---|---|
-| `IMS_GRPC_ADDR` | `:9090` | gRPC bind address |
-| `IMS_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed Origins |
+| `VELLUM_GRPC_ADDR` | `:9090` | gRPC bind address |
+| `VELLUM_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed Origins |
 | `NEXT_PUBLIC_API_BASE` | `http://localhost:8080` | Frontend → backend URL (build-time, exposed to browser) |
 
 ### Run the full system
@@ -313,11 +313,11 @@ Phase 5 dashboard to consume; the dashboard itself ships in Phase 5.
 ```bash
 # 1. Bring up the data stores + apply migrations.
 docker compose -f docker/compose.yaml up -d
-export DATABASE_URL="postgres://ims:ims@localhost:5432/ims?sslmode=disable"
+export DATABASE_URL="postgres://vellum:vellum@localhost:5432/vellum?sslmode=disable"
 migrate -path backend/migrations -database "$DATABASE_URL" up
 
 # 2. Start the backend (HTTP :8080 + gRPC :9090).
-cd backend && go run ./cmd/ims
+cd backend && go run ./cmd/vellum
 
 # 3. In another terminal — start the dashboard.
 cd frontend && pnpm dev
@@ -330,7 +330,7 @@ cd backend && go run -tags phase5demo ../scripts/grpc-client.go \
 
 ### Regenerating gRPC stubs
 
-After editing `backend/proto/ims/v1/signals.proto`:
+After editing `backend/proto/vellum/v1/signals.proto`:
 
 ```bash
 cd backend

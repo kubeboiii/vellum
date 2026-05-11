@@ -36,10 +36,10 @@ it for three reasons:
   runtime dependency. Easy to put in a Docker image.
 - **Fast cold start** — milliseconds, not seconds (vs. JVM-based Java/Kotlin).
 
-### Q: What is `go.mod` and what does `module github.com/kubeboiii/ims` mean?
+### Q: What is `go.mod` and what does `module github.com/kubeboiii/vellum` mean?
 **A:** `go.mod` is Go's package manifest (like `package.json` for Node).
 The `module` line declares the *import path* — anywhere in this project,
-`internal/pipeline` is imported as `github.com/kubeboiii/ims/internal/pipeline`.
+`internal/pipeline` is imported as `github.com/kubeboiii/vellum/internal/pipeline`.
 The string doesn't have to point to a real GitHub repo; it just has to
 be globally unique among Go modules.
 
@@ -121,7 +121,7 @@ custom healthcheck), so a schemaless store is a natural fit.
 ### Q: What is Redis?
 **A:** An in-memory key-value store. Everything lives in RAM (with optional
 disk persistence), making reads and writes sub-millisecond. We use it
-for two things in IMS: (a) the **debounce window** (Phase 3 — atomic
+for two things in Vellum: (a) the **debounce window** (Phase 3 — atomic
 check-then-act via Lua scripts) and (b) a hot cache for the dashboard's
 live feed.
 
@@ -191,7 +191,7 @@ we deleted the `.keep`.)
 is the *template* you commit, with the variable names but fake values.
 Anyone cloning copies it: `cp .env.example .env` and fills in real values.
 
-### Q: Why pin a graceful-shutdown handler in `cmd/ims/main.go` even in Phase 1?
+### Q: Why pin a graceful-shutdown handler in `cmd/vellum/main.go` even in Phase 1?
 **A:** Practicing the pattern from day one. When SIGTERM hits, we have
 ~10s to finish in-flight requests and exit cleanly. Phase 2+ extends
 this to also drain the worker pool, but the structure was right from
@@ -267,7 +267,7 @@ the containers and returns immediately. Use `up` while developing,
 
 **7. "Why isn't there a backend Dockerfile yet?"**
 Phase 1 only requires the stack to come up — running the Go server is
-still `go run ./cmd/ims` from the host. Phase 7 (Polish) adds a backend
+still `go run ./cmd/vellum` from the host. Phase 7 (Polish) adds a backend
 Dockerfile so the entire system can run inside Compose. That'd let
 `docker compose up` truly bring up everything; today the human starts
 the backend in another terminal.
@@ -281,7 +281,7 @@ bugs without a global install.
 **9. "What does `internal/` enforce that just naming the directory
 `private/` would not?"**
 The Go *compiler* enforces it. Any package outside this module that
-tries `import "github.com/kubeboiii/ims/internal/pipeline"` will not
+tries `import "github.com/kubeboiii/vellum/internal/pipeline"` will not
 compile. Naming alone is convention; `internal/` is a contract.
 
 **10. "Why not use Go's stdlib `net/http` instead of Gin?"**
@@ -302,7 +302,7 @@ Practice these end-to-end without the docs:
 - [ ] Connect to Postgres and verify the timescaledb extension is loaded.
 - [ ] Tear the stack down keeping volumes: `down`. Versus nuking volumes:
       `down -v`.
-- [ ] Boot the backend (`go run ./cmd/ims`) and curl `/health`.
+- [ ] Boot the backend (`go run ./cmd/vellum`) and curl `/health`.
 - [ ] Boot the frontend (`pnpm dev`) and open `localhost:3000`.
 - [ ] Modify `docker/compose.yaml` to expose Redis on a non-default port
       and bring the stack back up. (Builds intuition.)

@@ -1,29 +1,9 @@
-// THEME.md §6.8 — Hero signal-rate chart.
-//
-// "Compact but visually significant — when the failure simulator
-// runs, this is what visibly spikes in the demo video."
-//
-// Spec recap:
-//   - 120px tall, full width
-//   - Stacked AreaChart by severity (P0 red on top, then P1/P2/P3,
-//     resolved/closed in gray at the bottom)
-//   - Fills at low alpha (0.20), top stroke at full color, 1px
-//   - 15-minute window, 30s buckets (30 points)
-//   - X-axis: only "15m ago" and "now" labels
-//   - Y-axis: hidden; current rate in top-right with live lime dot
-//   - Background: bg-surface, 1px border, radius-md, padding 12/16
-//
-// The chart is fed a window of bucketed data points by the parent.
-// Phase 5 v1: the parent constructs a 30-point window by polling
-// the metrics ticker line and bucketing client-side. (A proper
-// /v1/metrics/rate endpoint is Phase 6+.)
-
 "use client";
 
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
 export interface RateBucket {
-  // Bucket-end timestamp; we use it as the X axis category.
+
   t: string;
   p0: number;
   p1: number;
@@ -37,7 +17,6 @@ interface SignalRateChartProps {
   currentRatePerSec: number;
 }
 
-// Colors mirror THEME.md §2.3 severity hues.
 const SEVERITY_FILLS: Array<{ key: keyof RateBucket; stroke: string; fill: string }> = [
   { key: "other", stroke: "#71717A", fill: "rgba(113,113,122,0.20)" },
   { key: "p3", stroke: "#3B82F6", fill: "rgba(59,130,246,0.20)" },
@@ -47,8 +26,7 @@ const SEVERITY_FILLS: Array<{ key: keyof RateBucket; stroke: string; fill: strin
 ];
 
 export function SignalRateChart({ buckets, currentRatePerSec }: SignalRateChartProps) {
-  // Empty state shows the frame so the dashboard layout doesn't
-  // jump when the first data arrives.
+
   const data = buckets.length > 0 ? buckets : Array.from({ length: 30 }, (_, i) => ({
     t: String(i), p0: 0, p1: 0, p2: 0, p3: 0, other: 0,
   }));

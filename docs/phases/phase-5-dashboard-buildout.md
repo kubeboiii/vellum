@@ -128,7 +128,7 @@ Every new component picks from this kit. **No new visual idioms.**
 
 ### A4. `PersonaSwitcher`
 - Pure client. Pill toggle: `SRE` (default) / `Commander` / `Post-mortem`.
-- Stored in `useState`; persist via `localStorage` key `ims.persona`.
+- Stored in `useState`; persist via `localStorage` key `vellum.persona`.
 - Emits an `onChange(persona)`.
 - Each persona changes:
   - SRE → live feed sort: severity DESC then last_signal_ts DESC (current behavior)
@@ -302,7 +302,7 @@ We can't run Go tests from the frontend, but we can run:
 - No auth means no auth bypass risk; nothing to add.
 - All user-typed inputs (load-test count, rps) are clamped + `parseInt`'d; never interpolated into URLs.
 - `payload` field on signals is always rendered via `JSON.stringify`, never `dangerouslySetInnerHTML`.
-- localStorage usage is namespaced (`ims.persona`) and never reads back as code.
+- localStorage usage is namespaced (`vellum.persona`) and never reads back as code.
 
 ## 11. Out of scope for this pass (do NOT build)
 

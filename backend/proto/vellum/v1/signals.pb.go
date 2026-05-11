@@ -24,9 +24,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: ims/v1/signals.proto
+// source: vellum/v1/signals.proto
 
-package imsv1
+package vellumv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -82,11 +82,11 @@ func (x Ack_AckStatus) String() string {
 }
 
 func (Ack_AckStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ims_v1_signals_proto_enumTypes[0].Descriptor()
+	return file_vellum_v1_signals_proto_enumTypes[0].Descriptor()
 }
 
 func (Ack_AckStatus) Type() protoreflect.EnumType {
-	return &file_ims_v1_signals_proto_enumTypes[0]
+	return &file_vellum_v1_signals_proto_enumTypes[0]
 }
 
 func (x Ack_AckStatus) Number() protoreflect.EnumNumber {
@@ -95,7 +95,7 @@ func (x Ack_AckStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Ack_AckStatus.Descriptor instead.
 func (Ack_AckStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ims_v1_signals_proto_rawDescGZIP(), []int{1, 0}
+	return file_vellum_v1_signals_proto_rawDescGZIP(), []int{1, 0}
 }
 
 // Signal mirrors the HTTP JSON schema in 00-master-prd §4.2.
@@ -123,7 +123,7 @@ type Signal struct {
 
 func (x *Signal) Reset() {
 	*x = Signal{}
-	mi := &file_ims_v1_signals_proto_msgTypes[0]
+	mi := &file_vellum_v1_signals_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -135,7 +135,7 @@ func (x *Signal) String() string {
 func (*Signal) ProtoMessage() {}
 
 func (x *Signal) ProtoReflect() protoreflect.Message {
-	mi := &file_ims_v1_signals_proto_msgTypes[0]
+	mi := &file_vellum_v1_signals_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -148,7 +148,7 @@ func (x *Signal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Signal.ProtoReflect.Descriptor instead.
 func (*Signal) Descriptor() ([]byte, []int) {
-	return file_ims_v1_signals_proto_rawDescGZIP(), []int{0}
+	return file_vellum_v1_signals_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Signal) GetSignalId() string {
@@ -206,7 +206,7 @@ func (x *Signal) GetPayload() []byte {
 type Ack struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	SignalId string                 `protobuf:"bytes,1,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
-	Status   Ack_AckStatus          `protobuf:"varint,2,opt,name=status,proto3,enum=ims.v1.Ack_AckStatus" json:"status,omitempty"`
+	Status   Ack_AckStatus          `protobuf:"varint,2,opt,name=status,proto3,enum=vellum.v1.Ack_AckStatus" json:"status,omitempty"`
 	// Human-readable error when status != ACCEPTED. Empty otherwise.
 	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -215,7 +215,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_ims_v1_signals_proto_msgTypes[1]
+	mi := &file_vellum_v1_signals_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -227,7 +227,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_ims_v1_signals_proto_msgTypes[1]
+	mi := &file_vellum_v1_signals_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -240,7 +240,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_ims_v1_signals_proto_rawDescGZIP(), []int{1}
+	return file_vellum_v1_signals_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Ack) GetSignalId() string {
@@ -264,11 +264,11 @@ func (x *Ack) GetError() string {
 	return ""
 }
 
-var File_ims_v1_signals_proto protoreflect.FileDescriptor
+var File_vellum_v1_signals_proto protoreflect.FileDescriptor
 
-const file_ims_v1_signals_proto_rawDesc = "" +
+const file_vellum_v1_signals_proto_rawDesc = "" +
 	"\n" +
-	"\x14ims/v1/signals.proto\x12\x06ims.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf7\x01\n" +
+	"\x17vellum/v1/signals.proto\x12\tvellum.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf7\x01\n" +
 	"\x06Signal\x12\x1b\n" +
 	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x12!\n" +
 	"\fcomponent_id\x18\x02 \x01(\tR\vcomponentId\x12%\n" +
@@ -276,44 +276,44 @@ const file_ims_v1_signals_proto_rawDesc = "" +
 	"\bseverity\x18\x04 \x01(\tR\bseverity\x128\n" +
 	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x16\n" +
 	"\x06source\x18\x06 \x01(\tR\x06source\x12\x18\n" +
-	"\apayload\x18\a \x01(\fR\apayload\"\xef\x01\n" +
+	"\apayload\x18\a \x01(\fR\apayload\"\xf2\x01\n" +
 	"\x03Ack\x12\x1b\n" +
-	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x12-\n" +
-	"\x06status\x18\x02 \x01(\x0e2\x15.ims.v1.Ack.AckStatusR\x06status\x12\x14\n" +
+	"\tsignal_id\x18\x01 \x01(\tR\bsignalId\x120\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x18.vellum.v1.Ack.AckStatusR\x06status\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"\x85\x01\n" +
 	"\tAckStatus\x12\x1a\n" +
 	"\x16ACK_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACK_STATUS_ACCEPTED\x10\x01\x12\"\n" +
 	"\x1eACK_STATUS_REJECTED_QUEUE_FULL\x10\x02\x12\x1f\n" +
-	"\x1bACK_STATUS_REJECTED_INVALID\x10\x032A\n" +
-	"\rSignalService\x120\n" +
-	"\rIngestSignals\x12\x0e.ims.v1.Signal\x1a\v.ims.v1.Ack(\x010\x01B-Z+github.com/kubeboiii/ims/proto/ims/v1;imsv1b\x06proto3"
+	"\x1bACK_STATUS_REJECTED_INVALID\x10\x032G\n" +
+	"\rSignalService\x126\n" +
+	"\rIngestSignals\x12\x11.vellum.v1.Signal\x1a\x0e.vellum.v1.Ack(\x010\x01B6Z4github.com/kubeboiii/vellum/proto/vellum/v1;vellumv1b\x06proto3"
 
 var (
-	file_ims_v1_signals_proto_rawDescOnce sync.Once
-	file_ims_v1_signals_proto_rawDescData []byte
+	file_vellum_v1_signals_proto_rawDescOnce sync.Once
+	file_vellum_v1_signals_proto_rawDescData []byte
 )
 
-func file_ims_v1_signals_proto_rawDescGZIP() []byte {
-	file_ims_v1_signals_proto_rawDescOnce.Do(func() {
-		file_ims_v1_signals_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_ims_v1_signals_proto_rawDesc), len(file_ims_v1_signals_proto_rawDesc)))
+func file_vellum_v1_signals_proto_rawDescGZIP() []byte {
+	file_vellum_v1_signals_proto_rawDescOnce.Do(func() {
+		file_vellum_v1_signals_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_vellum_v1_signals_proto_rawDesc), len(file_vellum_v1_signals_proto_rawDesc)))
 	})
-	return file_ims_v1_signals_proto_rawDescData
+	return file_vellum_v1_signals_proto_rawDescData
 }
 
-var file_ims_v1_signals_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_ims_v1_signals_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_ims_v1_signals_proto_goTypes = []any{
-	(Ack_AckStatus)(0),            // 0: ims.v1.Ack.AckStatus
-	(*Signal)(nil),                // 1: ims.v1.Signal
-	(*Ack)(nil),                   // 2: ims.v1.Ack
+var file_vellum_v1_signals_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_vellum_v1_signals_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_vellum_v1_signals_proto_goTypes = []any{
+	(Ack_AckStatus)(0),            // 0: vellum.v1.Ack.AckStatus
+	(*Signal)(nil),                // 1: vellum.v1.Signal
+	(*Ack)(nil),                   // 2: vellum.v1.Ack
 	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 }
-var file_ims_v1_signals_proto_depIdxs = []int32{
-	3, // 0: ims.v1.Signal.timestamp:type_name -> google.protobuf.Timestamp
-	0, // 1: ims.v1.Ack.status:type_name -> ims.v1.Ack.AckStatus
-	1, // 2: ims.v1.SignalService.IngestSignals:input_type -> ims.v1.Signal
-	2, // 3: ims.v1.SignalService.IngestSignals:output_type -> ims.v1.Ack
+var file_vellum_v1_signals_proto_depIdxs = []int32{
+	3, // 0: vellum.v1.Signal.timestamp:type_name -> google.protobuf.Timestamp
+	0, // 1: vellum.v1.Ack.status:type_name -> vellum.v1.Ack.AckStatus
+	1, // 2: vellum.v1.SignalService.IngestSignals:input_type -> vellum.v1.Signal
+	2, // 3: vellum.v1.SignalService.IngestSignals:output_type -> vellum.v1.Ack
 	3, // [3:4] is the sub-list for method output_type
 	2, // [2:3] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -321,27 +321,27 @@ var file_ims_v1_signals_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_ims_v1_signals_proto_init() }
-func file_ims_v1_signals_proto_init() {
-	if File_ims_v1_signals_proto != nil {
+func init() { file_vellum_v1_signals_proto_init() }
+func file_vellum_v1_signals_proto_init() {
+	if File_vellum_v1_signals_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ims_v1_signals_proto_rawDesc), len(file_ims_v1_signals_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vellum_v1_signals_proto_rawDesc), len(file_vellum_v1_signals_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_ims_v1_signals_proto_goTypes,
-		DependencyIndexes: file_ims_v1_signals_proto_depIdxs,
-		EnumInfos:         file_ims_v1_signals_proto_enumTypes,
-		MessageInfos:      file_ims_v1_signals_proto_msgTypes,
+		GoTypes:           file_vellum_v1_signals_proto_goTypes,
+		DependencyIndexes: file_vellum_v1_signals_proto_depIdxs,
+		EnumInfos:         file_vellum_v1_signals_proto_enumTypes,
+		MessageInfos:      file_vellum_v1_signals_proto_msgTypes,
 	}.Build()
-	File_ims_v1_signals_proto = out.File
-	file_ims_v1_signals_proto_goTypes = nil
-	file_ims_v1_signals_proto_depIdxs = nil
+	File_vellum_v1_signals_proto = out.File
+	file_vellum_v1_signals_proto_goTypes = nil
+	file_vellum_v1_signals_proto_depIdxs = nil
 }

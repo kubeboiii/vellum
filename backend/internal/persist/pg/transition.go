@@ -9,18 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// ErrSerializationFailure is returned when the SERIALIZABLE transaction
-// could not commit because of concurrent activity (Postgres SQLSTATE
-// 40001). Callers — the workflow engine, ultimately the API handler —
-// should treat this as 409 Conflict so the client retries.
 var ErrSerializationFailure = errors.New("pg: serialization failure (40001); retry")
 
-// wrapPgError inspects a pgx-returned error and elevates the well-known
-// codes to our sentinel errors. We only need 40001 for now; future
-// callers can extend this.
 func wrapPgError(err error) error {
 	if err == nil {
 		return nil
@@ -32,13 +25,6 @@ func wrapPgError(err error) error {
 	return err
 }
 
-// BeginTx opens a SERIALIZABLE Postgres transaction and returns a
-// `workItemTx` handle the workflow.Engine drives. SERIALIZABLE is
-// CLAUDE.md design rule 2 and 01-architecture §12: it protects the
-// state_transitions audit table from phantom reads (two concurrent
-// closes for the same WI both seeing "no prior CLOSED transition" and
-// both writing one). The contention is low (transitions are
-// human-driven) so the perf cost is negligible.
 func (r *WorkItemRepository) BeginTx(ctx context.Context) (*workItemTx, error) {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
@@ -47,21 +33,10 @@ func (r *WorkItemRepository) BeginTx(ctx context.Context) (*workItemTx, error) {
 	return &workItemTx{tx: tx}, nil
 }
 
-// workItemTx is the concrete `workflow.Tx`. It holds an open pgx
-// transaction and provides the locking + write operations the engine
-// needs. Each handler call gets a fresh instance — they aren't reused
-// across requests.
 type workItemTx struct {
 	tx pgx.Tx
 }
 
-// LockWorkItem runs SELECT ... FOR UPDATE on the target row. This is
-// the second half of design rule 2 (01-architecture §7.2.1): the row
-// is locked for the rest of the transaction, so a concurrent
-// transaction attempting the same SELECT FOR UPDATE blocks until we
-// commit/rollback. Result: two simultaneous PATCH .../state calls on
-// the same WI serialize at the row level; whichever commits first
-// wins, the other re-evaluates its state and gets the right answer.
 func (t *workItemTx) LockWorkItem(ctx context.Context, id uuid.UUID) (model.WorkItem, error) {
 	const q = `
 		SELECT id, component_id, component_type, severity, status,
@@ -102,13 +77,6 @@ func (t *workItemTx) LockWorkItem(ctx context.Context, id uuid.UUID) (model.Work
 	return wi, nil
 }
 
-// UpdateWorkItemStateAndMTTR persists the post-transition fields. We
-// always set status + updated_at; the four nullable timestamps go
-// through as-is (NULL stays NULL, set stays set).
-//
-// We accept the full WorkItem rather than just (id, status, ...) so
-// ClosedState.OnEnter can populate MTTR + ClosedAt + IncidentStart +
-// IncidentEnd in memory and have them all persisted in one UPDATE.
 func (t *workItemTx) UpdateWorkItemStateAndMTTR(ctx context.Context, wi model.WorkItem) error {
 	const q = `
 		UPDATE work_items
@@ -137,9 +105,6 @@ func (t *workItemTx) UpdateWorkItemStateAndMTTR(ctx context.Context, wi model.Wo
 	return nil
 }
 
-// InsertStateTransition writes one row to the audit table inside the
-// same transaction. FR-4.4: "The Work Item update and the transition
-// row write are in a single database transaction."
 func (t *workItemTx) InsertStateTransition(ctx context.Context, st model.StateTransition) error {
 	const q = `
 		INSERT INTO state_transitions
@@ -157,10 +122,6 @@ func (t *workItemTx) InsertStateTransition(ctx context.Context, st model.StateTr
 	return nil
 }
 
-// InsertRCA writes the RCA row inside the same transaction as the
-// CLOSE transition. UNIQUE constraint on work_item_id means a duplicate
-// insert will fail — that becomes the "already closed" race protection
-// at the DB level.
 func (t *workItemTx) InsertRCA(ctx context.Context, rca model.RCA) error {
 	const q = `
 		INSERT INTO rca
@@ -182,14 +143,6 @@ func (t *workItemTx) InsertRCA(ctx context.Context, rca model.RCA) error {
 	return nil
 }
 
-// Commit ends the transaction successfully. After this the rollback
-// `defer` in the engine is a no-op (pgx handles that).
-//
-// Under SERIALIZABLE isolation, the commit itself can fail with
-// SQLSTATE 40001 if Postgres detected concurrent activity that
-// makes our transaction's view stale. wrapPgError surfaces that as
-// ErrSerializationFailure so the API handler returns 409 Conflict
-// rather than a 500.
 func (t *workItemTx) Commit() error {
 	if err := t.tx.Commit(context.Background()); err != nil {
 		return fmt.Errorf("pg: commit: %w", wrapPgError(err))
@@ -197,7 +150,6 @@ func (t *workItemTx) Commit() error {
 	return nil
 }
 
-// Rollback ends the transaction without persisting. Idempotent.
 func (t *workItemTx) Rollback() error {
 	_ = t.tx.Rollback(context.Background())
 	return nil

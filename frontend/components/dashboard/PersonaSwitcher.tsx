@@ -1,12 +1,3 @@
-// PersonaSwitcher — three persona cards (PRD §6). Each card shows
-// the role and the concrete UI effect, not just a name. The user
-// can read *what each toggle does* without clicking, which is the
-// whole point of having labels at all.
-//
-// Layout: three side-by-side cards, the active one outlined in
-// lime. Click anywhere on a card to select it. State persists to
-// localStorage under ims.persona.
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -21,8 +12,7 @@ import {
 } from "@/lib/persona";
 
 interface Props {
-  // Controlled: parent owns the value and gets notified on change
-  // so it can re-arrange children.
+
   value: Persona;
   onChange: (next: Persona) => void;
 }
@@ -30,19 +20,14 @@ interface Props {
 const ORDER: Persona[] = ["sre", "commander", "postmortem"];
 
 export function PersonaSwitcher({ value, onChange }: Props) {
-  // On first mount, restore persisted persona from localStorage.
-  // Parent passes "sre" as the SSR-safe fallback; we overwrite if
-  // a saved value exists.
+
   useEffect(() => {
     const stored = readPersona();
     if (stored !== value) onChange(stored);
-    // Intentional: once-on-mount restore; not reactive to `value`.
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Track mount so the description text doesn't re-render between
-  // SSR ("sre" default) and the post-mount restored value, which
-  // would log a hydration warning.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 

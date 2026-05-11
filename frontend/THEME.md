@@ -45,7 +45,7 @@ True matte black, not navy-tinted. Five surface levels.
 
 ### 2.2 Brand accent (lime)
 
-Single warm accent color, used sparingly. This is what separates the IMS from "just another dark dashboard." Inspired by terminal-classic green but tuned for modern displays — not the harsh `#00FF00` of phosphor CRTs, but a deliberate, restrained electric lime.
+Single warm accent color, used sparingly. This is what separates the Vellum from "just another dark dashboard." Inspired by terminal-classic green but tuned for modern displays — not the harsh `#00FF00` of phosphor CRTs, but a deliberate, restrained electric lime.
 
 ```css
 --accent:         #BEF264;   /* lime 300 — primary brand */
@@ -58,7 +58,7 @@ Single warm accent color, used sparingly. This is what separates the IMS from "j
 ```
 
 **Where to use lime:**
-- The `IMS` wordmark in the nav
+- The `Vellum` wordmark in the nav
 - Active nav item (left border accent or background tint with `--accent-bg`)
 - Primary button background (`Submit & Close`, `Mark as Investigating`)
 - Focus rings on inputs and buttons (2px outline, color `--accent`)
@@ -369,7 +369,7 @@ Use lime sparingly — typically one primary button per page. The "Submit & Clos
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ ▎IMS · ● Live Feed                                  🔔 mute    ⚙   │ ← nav 48px
+│ ▎Vellum · ● Live Feed                                  🔔 mute    ⚙   │ ← nav 48px
 ├─────────────────────────────────────────────────────────────────────┤  ▎ = lime accent bar
 │ ┌─ SIGNAL RATE · last 15 min ────────────── 8,421/s ●live ─────┐   │ ← hero chart 120px
 │ │                       ▄▄▄                                   │   │   ●live = lime dot
@@ -463,9 +463,9 @@ Secondary anchors (these influenced earlier decisions):
 - **Datadog incident view** — severity color coding, the way state pills appear in table rows
 - **Sentry issue list** — JSON payload display, stack-trace style information density
 
-**If Claude generates something that looks like Stripe, Notion, or any consumer SaaS app** (lighter, rounder, friendlier, more whitespace), it's wrong for this project. The IMS is an ops tool, not a marketing site.
+**If Claude generates something that looks like Stripe, Notion, or any consumer SaaS app** (lighter, rounder, friendlier, more whitespace), it's wrong for this project. The Vellum is an ops tool, not a marketing site.
 
-The single brand accent — lime — is the IMS's signature. Used sparingly: wordmark, active nav, primary buttons, focus rings, live-indicator dots, sparkline strokes on neutral cards. Never on severity-encoded UI. The combination of pure matte-black surfaces + multi-color severity coding + a single restrained lime accent is what makes this distinct from the four references rather than a copy of any one of them.
+The single brand accent — lime — is the Vellum's signature. Used sparingly: wordmark, active nav, primary buttons, focus rings, live-indicator dots, sparkline strokes on neutral cards. Never on severity-encoded UI. The combination of pure matte-black surfaces + multi-color severity coding + a single restrained lime accent is what makes this distinct from the four references rather than a copy of any one of them.
 
 ---
 

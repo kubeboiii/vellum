@@ -1,8 +1,3 @@
-// SignalFrequency — bucket an incident's raw signals across time
-// into 12 bins between min and max timestamp; render as a small
-// bar chart. Shape tells the responder: "one spike then silence"
-// vs "sustained burn" vs "ramping up."
-
 "use client";
 
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -33,17 +28,14 @@ export function SignalFrequency({ signals }: Props) {
   const times = signals.map((s) => new Date(s.timestamp).getTime());
   const tmin = Math.min(...times);
   const tmax = Math.max(...times);
-  // span === 0 means all signals share the exact same timestamp
-  // (rare but possible in synthetic load); guard /0.
+
   const span = Math.max(1, tmax - tmin);
   const buckets = Array(BINS).fill(0);
   for (const t of times) {
     const idx = Math.min(BINS - 1, Math.floor(((t - tmin) / span) * BINS));
     buckets[idx] += 1;
   }
-  // Each bucket gets a label = "+Xs from start" so the x-axis is
-  // meaningful (the previous version hid the time axis entirely).
-  // We label every 3rd bucket to avoid crowding at 12 bins wide.
+
   const binMs = span / BINS;
   const data = buckets.map((y, i) => ({
     i,
@@ -99,9 +91,6 @@ export function SignalFrequency({ signals }: Props) {
   );
 }
 
-// fmtOffset turns a millisecond offset into a "+Xs" / "+Xm" tick
-// label. Resolution adapts to the bucket size so short incidents
-// don't read as "+0s, +0s, +0s..."
 function fmtOffset(ms: number): string {
   if (ms < 1000) return `+${Math.round(ms)}ms`;
   const s = ms / 1000;

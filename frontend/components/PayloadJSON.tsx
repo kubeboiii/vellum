@@ -1,18 +1,5 @@
-// THEME.md §6.5 — Signal payload syntax highlighting.
-//
-// Hand-rolled tokenizer (smaller than Prism, no extra dep). Renders:
-//   keys: text-secondary
-//   strings: emerald
-//   numbers: amber
-//   booleans / null: blue
-// All mono 12px, line-height 1.5. Whitespace preserved.
-
 import React from "react";
 
-// tokenize splits a JSON.stringify-ed string into colorable spans.
-// Regex-based, single pass. Not strictly safe for every valid JSON
-// edge case (Unicode escapes inside strings render fine; that's the
-// only "wonky" case in real signals).
 function tokenize(json: string): React.ReactNode[] {
   const re =
     /("(?:[^"\\]|\\.)*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;

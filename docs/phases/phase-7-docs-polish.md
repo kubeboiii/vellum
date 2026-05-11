@@ -45,7 +45,7 @@ Use **Mermaid** because:
 - No image asset to keep in sync with the code
 
 Two diagrams:
-1. **High-level system context** — how IMS sits between observability sources and human responders
+1. **High-level system context** — how Vellum sits between observability sources and human responders
 2. **Internal runtime topology** — the four-stage pipeline + four stores + the dashboard
 
 Both go in `docs/01-architecture.md` (replacing the ASCII art) AND a copy of (1) sits at the top of the README.
@@ -63,7 +63,7 @@ This is the file a reviewer reads to understand my AI-assisted process. It's als
 ## 5. README final-pass structure
 
 ```
-# IMS — Incident Management System
+# Vellum — Incident Management System
 
 [one-line elevator pitch + Mermaid diagram inline]
 

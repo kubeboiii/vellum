@@ -1,8 +1,3 @@
-// PayloadFingerprints — group an incident's raw signals by the
-// shape of their payload's top-level keys. Shows the SRE
-// "187× {error,host}, 8× {error,host,retry_count}, 5 others"
-// instead of scrolling through 200 nearly-identical JSON blobs.
-
 "use client";
 
 import { groupByFingerprint } from "@/lib/fingerprint";

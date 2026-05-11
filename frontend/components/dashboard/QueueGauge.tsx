@@ -1,7 +1,3 @@
-// QueueGauge — horizontal bar showing the backend ingestion queue's
-// depth vs. capacity. Pulses amber at 60% full, red at 85%.
-// Lives inside HealthStrip; could stand alone on a /load-test page.
-
 "use client";
 
 interface QueueGaugeProps {
@@ -12,8 +8,7 @@ interface QueueGaugeProps {
 export function QueueGauge({ depth, capacity }: QueueGaugeProps) {
   const safeCap = Math.max(1, capacity);
   const pct = Math.min(100, (depth / safeCap) * 100);
-  // Tone bands: ≤60% lime (healthy), 60–85% amber (warning),
-  // >85% red (about to backpressure 503).
+
   const tone =
     pct > 85 ? "red" : pct > 60 ? "amber" : "lime";
   const fill =

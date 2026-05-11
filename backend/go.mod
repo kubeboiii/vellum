@@ -1,4 +1,4 @@
-module github.com/kubeboiii/ims
+module github.com/kubeboiii/vellum
 
 go 1.26.2
 

@@ -12,11 +12,9 @@ import (
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
-	"github.com/kubeboiii/ims/internal/model"
+	"github.com/kubeboiii/vellum/internal/model"
 )
 
-// startMongo boots an ephemeral MongoDB container, returns a connected
-// client + the test database name. Cleans up on test end.
 func startMongo(t *testing.T) (*mongo.Client, string) {
 	t.Helper()
 	if testing.Short() {
@@ -92,8 +90,7 @@ func TestSignalRepo_InsertAndCount(t *testing.T) {
 }
 
 func TestSignalRepo_PayloadStoredAsBSON(t *testing.T) {
-	// Confirm we can query by a payload field, proving the JSON was
-	// deserialised into native BSON (not stored as a string blob).
+
 	client, dbName := startMongo(t)
 	db := client.Database(dbName)
 	repo := NewSignalRepository(db)
@@ -112,7 +109,6 @@ func TestSignalRepo_PayloadStoredAsBSON(t *testing.T) {
 		t.Fatalf("insert: %v", err)
 	}
 
-	// Find by nested payload field.
 	var got map[string]any
 	err := db.Collection(signalsCollection).
 		FindOne(ctx, map[string]any{"payload.err": "timeout"}).

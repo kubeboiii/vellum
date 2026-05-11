@@ -21,12 +21,12 @@
 //     as bytes avoids a parse-and-reserialise round-trip.
 
 syntax = "proto3";
-package ims.v1;
+package vellum.v1;
 
-// Generated Go lands at backend/proto/ims/v1/*.pb.go thanks to
+// Generated Go lands at backend/proto/vellum/v1/*.pb.go thanks to
 // paths=source_relative in buf.gen.yaml; the Go package name is
 // `imsv1` so call sites read `imsv1.Signal{...}`.
-option go_package = "github.com/kubeboiii/ims/proto/ims/v1;imsv1";
+option go_package = "github.com/kubeboiii/vellum/proto/vellum/v1;vellumv1";
 
 import "google/protobuf/timestamp.proto";
 

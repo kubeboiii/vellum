@@ -70,13 +70,13 @@ with `Retry-After: 1` header (seconds, rounded up).
 
 | Var | Default | Why |
 |---|---|---|
-| `IMS_HTTP_ADDR` | `:8080` | bind address |
-| `IMS_QUEUE_CAPACITY` | `50000` | 5s of nominal at 10K/sec (01-arch §4.2) |
-| `IMS_WORKER_COUNT` | `NumCPU()*2` | I/O-bound oversub (01-arch §4.3) |
-| `IMS_RATE_LIMIT_RPS` | `1000` | per-source default (FR-1.6) |
-| `IMS_RATE_LIMIT_BURST` | `2000` | burst tolerance |
-| `IMS_METRICS_INTERVAL` | `5s` | stdout metrics line cadence (FR-8.2) |
-| `IMS_SHUTDOWN_TIMEOUT` | `30s` | drain deadline (NFR-2.4) |
+| `VELLUM_HTTP_ADDR` | `:8080` | bind address |
+| `VELLUM_QUEUE_CAPACITY` | `50000` | 5s of nominal at 10K/sec (01-arch §4.2) |
+| `VELLUM_WORKER_COUNT` | `NumCPU()*2` | I/O-bound oversub (01-arch §4.3) |
+| `VELLUM_RATE_LIMIT_RPS` | `1000` | per-source default (FR-1.6) |
+| `VELLUM_RATE_LIMIT_BURST` | `2000` | burst tolerance |
+| `VELLUM_METRICS_INTERVAL` | `5s` | stdout metrics line cadence (FR-8.2) |
+| `VELLUM_SHUTDOWN_TIMEOUT` | `30s` | drain deadline (NFR-2.4) |
 
 ---
 
@@ -113,7 +113,7 @@ Concrete enforcement:
 5. `internal/obs/health.go` — handler reading queue depth from the pipeline.
 6. `internal/obs/metrics.go` — `Ticker.Run(ctx)` printing the structured
    line from FR-8.2.
-7. `cmd/ims/main.go` — wire pipeline + handler + middleware + ticker;
+7. `cmd/vellum/main.go` — wire pipeline + handler + middleware + ticker;
    replace the placeholder `/health`.
 8. `scripts/load-test.sh` — vegeta script. Target: 10K rps, 60s, p99 < 50ms,
    error rate < 1% (allowing some 429/503 noise from the rate limiter).
@@ -138,7 +138,7 @@ Concrete enforcement:
   - p99 latency ≤ 50 ms
   - success rate ≥ 99% (allowing minor 429/503)
 - [ ] Sending SIGINT during load drains the queue cleanly within
-      `IMS_SHUTDOWN_TIMEOUT` and prints a final metrics line.
+      `VELLUM_SHUTDOWN_TIMEOUT` and prints a final metrics line.
 
 ---
 

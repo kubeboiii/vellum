@@ -248,7 +248,7 @@ lock-free. The mutex only protects the map's structure.
    it returns, no goroutine can be inside `Submit`.
 3. THEN we close the channel and let workers drain.
 
-This is in `cmd/ims/main.go` and is one of the more easily-screwed-up
+This is in `cmd/vellum/main.go` and is one of the more easily-screwed-up
 parts of a Go service.
 
 ### Q: Why does the metrics ticker compute *rates* (per second) and not
@@ -420,13 +420,13 @@ so you put it behind any load balancer.
 
 - [ ] Explain (without notes) why 50K is the queue size and `NumCPU()*2`
       is the worker count.
-- [ ] Run the load test yourself: `IMS_RATE_LIMIT_RPS=20000 go run ./cmd/ims`
+- [ ] Run the load test yourself: `VELLUM_RATE_LIMIT_RPS=20000 go run ./cmd/vellum`
       in one terminal, `./scripts/load-test.sh` in another.
 - [ ] Read the vegeta report and tell me what p50, p90, p99 mean and
       why p99 is the one that matters for SLOs.
-- [ ] Lower `IMS_QUEUE_CAPACITY=100` and re-run the load test. Watch the
+- [ ] Lower `VELLUM_QUEUE_CAPACITY=100` and re-run the load test. Watch the
       drop count climb. Explain why.
-- [ ] Lower `IMS_WORKER_COUNT=1` and re-run. Now drops climb even with
+- [ ] Lower `VELLUM_WORKER_COUNT=1` and re-run. Now drops climb even with
       a big queue. Explain the bottleneck.
 - [ ] Crash a worker by adding `panic("test")` in `NoopProcessor`.
       Confirm the server keeps running, other workers keep draining.

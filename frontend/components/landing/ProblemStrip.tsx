@@ -1,21 +1,3 @@
-// LANDING.md §5.3 — problem strip.
-//
-// The "bridge" between the hero and the comparison cards. Phase-5
-// polish promotes it from naked prose to a textured passage that
-// earns its 24px type: drifting grid, corner crosshair ticks, and
-// a soft lime halo behind the text.
-//
-// An annotation arrow was tried and removed — at the prose's actual
-// rendered size, the arrow had nowhere to point that didn't
-// overhang the paragraph (decisions.md 2026-05-11).
-//
-// Why the upgrade: at large type with no surrounding texture, the
-// section read as a long unstyled paragraph. The new treatment
-// keeps the prose unchanged (the words ARE the design) but gives
-// the eye a few technical-drawing affordances on the way through.
-//
-// All motion gates on prefers-reduced-motion.
-
 "use client";
 
 import { motion, useInView, useReducedMotion } from "framer-motion";
@@ -24,15 +6,9 @@ import { useRef } from "react";
 export function ProblemStrip() {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-15%" });
-  // useReducedMotion returns boolean | null. Coerce to a strict
-  // boolean so the prop-passing downstream stays clean.
+
   const reduced = !!useReducedMotion();
 
-  // Word-by-word reveal sequence. We split the paragraph into runs
-  // (plain + emphasized) and animate the runs in series; the runs
-  // themselves use stagger so each word lands with a tiny delay.
-  // This isn't a hard read because the easing is gentle (16ms-per-
-  // word effective stagger).
   const runs: Run[] = [
     { text: "Production breaks.", emphasis: true },
     {
@@ -45,7 +21,7 @@ export function ProblemStrip() {
     },
     {
       text:
-        " The IMS turns that flood into a small, structured list of incidents your team can actually work.",
+        " Vellum turns that flood into a small, structured list of incidents your team can actually work.",
       annotation: true,
     },
   ];
@@ -55,18 +31,14 @@ export function ProblemStrip() {
       ref={ref}
       className="relative isolate overflow-hidden border-t border-divider px-6 py-24 sm:py-32"
     >
-      {/* Drifting grid texture — same idiom as HowItWorks. Lives at
-          the section level so the corner ticks have a backdrop. */}
+      {}
       <GridTexture />
 
-      {/* Corner crosshair ticks: four small L-shaped marks that
-          anchor the text region like a technical drawing's crop
-          marks. They draw themselves in on first reveal. */}
+      {}
       <CornerTicks inView={inView} reduced={reduced} />
 
       <div className="relative mx-auto max-w-[720px]">
-        {/* Soft lime halo behind the paragraph. Box-shadow on a
-            transparent anchor — never a gradient (THEME.md §8.4). */}
+        {}
         <div
           className="pointer-events-none absolute inset-x-[-10%] inset-y-[-30%] -z-10"
           aria-hidden
@@ -90,8 +62,6 @@ export function ProblemStrip() {
   );
 }
 
-// ---- Sub-components ----
-
 interface Run {
   text: string;
   emphasis?: boolean;
@@ -113,9 +83,7 @@ function RunSpan({
   reduced: boolean;
   priorWords: number;
 }) {
-  // Split into words so each fades in with a stagger. We preserve
-  // leading whitespace on the run by emitting it once before the
-  // word loop (otherwise the inline-block words collapse the gap).
+
   const leading = /^\s+/.exec(run.text)?.[0] ?? "";
   const words = run.text.trim().split(/\s+/);
 
@@ -130,9 +98,7 @@ function RunSpan({
         <motion.span
           key={j}
           className="inline-block"
-          // Animate y + opacity on first reveal. 16ms stagger keeps
-          // it from feeling like a per-word typewriter — the eye
-          // perceives it as a single soft wash.
+
           initial={reduced ? false : { opacity: 0, y: 6 }}
           animate={
             reduced
@@ -151,8 +117,7 @@ function RunSpan({
           {j < words.length - 1 ? " " : ""}
         </motion.span>
       ))}
-      {/* Emphasis runs get an animated lime underline. The
-          stroke-dashoffset draws it in left-to-right. */}
+      {}
       {run.emphasis && (
         <EmphasisUnderline inView={inView} reduced={reduced} priorWords={priorWords} />
       )}
@@ -160,8 +125,6 @@ function RunSpan({
   );
 }
 
-// EmphasisUnderline draws a 1px lime underline UNDER an emphasis
-// run. Absolutely positioned to bottom-0; pointer-events-none.
 function EmphasisUnderline({
   inView,
   reduced,
@@ -186,7 +149,7 @@ function EmphasisUnderline({
       }
       transition={{
         duration: 0.7,
-        // Land the underline after the run's last word has settled.
+
         delay: 0.02 * (priorWords + 8),
         ease: [0.16, 1, 0.3, 1],
       }}
@@ -194,18 +157,16 @@ function EmphasisUnderline({
   );
 }
 
-// CornerTicks — four L-shaped crop marks at the section corners.
-// Pure SVG so they scale crisply. Draw in via stroke-dashoffset.
 function CornerTicks({ inView, reduced }: { inView: boolean; reduced: boolean }) {
   const corners: Array<{ x: string; y: string; d: string }> = [
-    { x: "24", y: "24", d: "M 0 12 L 0 0 L 12 0" }, // top-left
-    { x: "calc(100% - 36px)", y: "24", d: "M 0 0 L 12 0 L 12 12" }, // top-right
-    { x: "24", y: "calc(100% - 36px)", d: "M 0 0 L 0 12 L 12 12" }, // bot-left
+    { x: "24", y: "24", d: "M 0 12 L 0 0 L 12 0" },
+    { x: "calc(100% - 36px)", y: "24", d: "M 0 0 L 12 0 L 12 12" },
+    { x: "24", y: "calc(100% - 36px)", d: "M 0 0 L 0 12 L 12 12" },
     {
       x: "calc(100% - 36px)",
       y: "calc(100% - 36px)",
       d: "M 0 12 L 12 12 L 12 0",
-    }, // bot-right
+    },
   ];
   return (
     <>
@@ -246,8 +207,6 @@ function CornerTicks({ inView, reduced }: { inView: boolean; reduced: boolean })
   );
 }
 
-// GridTexture — copied idiom from HowItWorks but with a much lower
-// stroke opacity so it reads as ambient texture, not structure.
 function GridTexture() {
   const reduced = useReducedMotion();
   return (

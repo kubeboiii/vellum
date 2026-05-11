@@ -12,7 +12,7 @@ This file is not a prompt-by-prompt dump. It's a working narrative — the kind 
 Repo scaffolding, Docker Compose with all 4 DBs running, empty Go module, empty Next.js app, README skeleton.
 
 ### Approach
-Wrote `docs/00-master-prd.md` and `docs/01-architecture.md` first (no code yet), then asked Claude to scaffold the directory layout per `CLAUDE.md`. Single-file generations: `docker/compose.yaml`, `backend/cmd/ims/main.go`, `backend/migrations/001_init.sql`, `frontend/package.json`. The phase file (`docs/phases/phase-1-foundation.md`) anchored the acceptance criteria.
+Wrote `docs/00-master-prd.md` and `docs/01-architecture.md` first (no code yet), then asked Claude to scaffold the directory layout per `CLAUDE.md`. Single-file generations: `docker/compose.yaml`, `backend/cmd/vellum/main.go`, `backend/migrations/001_init.sql`, `frontend/package.json`. The phase file (`docs/phases/phase-1-foundation.md`) anchored the acceptance criteria.
 
 ### What worked first try
 - Docker Compose with named volumes and healthchecks

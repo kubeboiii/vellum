@@ -428,7 +428,7 @@ requires re-running buf generate and committing both. Worth it.
 - [ ] Modify the dashboard's polling interval to 5s via env var.
       What's the minimum diff? (Hint: `NEXT_PUBLIC_POLL_INTERVAL_MS`.)
 - [ ] Block CORS at the proxy level (or hand-set
-      `IMS_CORS_ORIGINS=`) and watch the browser console fail to
+      `VELLUM_CORS_ORIGINS=`) and watch the browser console fail to
       load `/v1/incidents`. Explain the preflight failure mode.
 
 If those feel comfortable, Phase 5 is solid in your head.

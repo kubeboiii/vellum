@@ -1,16 +1,3 @@
-// THEME.md §7.1 — Live feed.
-//
-// Layout (top → bottom):
-//   1. Nav strip (48px)
-//   2. Hero signal-rate chart (120-ish px)
-//   3. 4 stat cards
-//   4. Filters row
-//   5. ACTIVE INCIDENTS table (full bleed)
-//   6. Bottom metrics-log strip (11px mono)
-//
-// All Client-side because we poll every 2s (FR-7.1). Server Components
-// can't hold useState.
-
 "use client";
 
 import { IconSearch } from "@tabler/icons-react";
@@ -36,9 +23,6 @@ const HISTORY_BUCKETS = 30;
 
 type Filter = "ALL" | Severity;
 
-// stat-card sparkline buffers: each card tracks its last N values
-// for the small line in the corner. Indexes here align with HISTORY_BUCKETS
-// for visual consistency.
 interface Series {
   active: number[];
   p0: number[];
@@ -60,23 +44,15 @@ export default function LiveFeed() {
   const [filter, setFilter] = useState<Filter>("ALL");
   const [search, setSearch] = useState("");
   const [muted, setMuted] = useState(true);
-  // PRD §6 persona shapes the live feed. Default "sre" pre-mount;
-  // PersonaSwitcher restores the user's persisted choice on mount.
+
   const [persona, setPersona] = useState<Persona>("sre");
 
-  // P0 beep — fires when a new P0 incident appears and the user
-  // has unmuted. Pure side effect; renders nothing.
   useP0Beep(items, muted);
 
-  // Sparkline / chart history. We accumulate the last N polls
-  // client-side. A proper /v1/metrics/rate endpoint would replace this
-  // in Phase 6+; for v1 it's still illustrative.
   const [series, setSeries] = useState<Series>(emptySeries);
   const [buckets, setBuckets] = useState<RateBucket[]>([]);
   const lastSignalsRef = useRef<number | null>(null);
 
-  // Polling loop. Mounts once; cancels on unmount. Calls poll()
-  // immediately so the page doesn't sit empty for the first 2s.
   useEffect(() => {
     let cancelled = false;
 
@@ -88,7 +64,6 @@ export default function LiveFeed() {
         setItems(data.items);
         setError(null);
 
-        // ---- Update the rolling history buffers.
         const now = new Date();
         const activeCount = data.items.length;
         const p0Count = data.items.filter((i) => i.severity === "P0").length;
@@ -106,10 +81,6 @@ export default function LiveFeed() {
           mttr: shiftPush(s.mttr, avgMTTR(data.items)),
         }));
 
-        // Build a stacked-area bucket from the current snapshot.
-        // Each poll = one bucket of width 2s. This is a synthetic
-        // chart for v1; Phase 6+ wires the real timeseries from
-        // TimescaleDB.
         const bucket: RateBucket = {
           t: now.toISOString(),
           p0: data.items
@@ -155,8 +126,7 @@ export default function LiveFeed() {
     return items.filter((i) => {
       if (!personaPreFilter(i)) return false;
       if (filter !== "ALL" && i.severity !== filter) return false;
-      // Substring match on component_id (case-insensitive). SREs scan
-      // by component name; matching IDs would be noisy.
+
       if (q && !i.component_id.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -164,8 +134,6 @@ export default function LiveFeed() {
 
   const currentRate = series.ingest[series.ingest.length - 1] ?? 0;
 
-  // Per-state counts power the commander-mode strip and the small
-  // tallies on the section header.
   const stateCounts: Record<Status, number> = items.reduce(
     (acc, wi) => {
       acc[wi.status] = (acc[wi.status] ?? 0) + 1;
@@ -180,22 +148,21 @@ export default function LiveFeed() {
       <HealthStrip />
 
       <main className="mx-auto max-w-[1400px] px-6 py-4 space-y-4">
-        {/* Persona switcher — PRD §6 personas. Re-arranges the
-            emphasis below without unmounting the feed. */}
+        {}
         <PersonaSwitcher value={persona} onChange={setPersona} />
 
-        {/* Commander mode: state counts strip front-and-center. */}
+        {}
         {persona === "commander" && (
           <StateCountsStrip counts={stateCounts} />
         )}
 
-        {/* §7.1 hero chart */}
+        {}
         <SignalRateChart buckets={buckets} currentRatePerSec={Math.round(currentRate)} />
 
-        {/* Severity mix bar — single-glance "how bad is it now". */}
+        {}
         <SeverityStackedBar items={items} />
 
-        {/* Stat cards. */}
+        {}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="Active Incidents"
@@ -227,13 +194,13 @@ export default function LiveFeed() {
           />
         </div>
 
-        {/* Side-by-side: noisiest components + new-incident rate. */}
+        {}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <NoisyComponents items={items} />
           <IncidentRateStrip items={items} />
         </div>
 
-        {/* Filters row — severity pills + component search. */}
+        {}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-2 font-sans text-label uppercase tracking-[0.05em] text-text-secondary">
             Filters
@@ -251,8 +218,7 @@ export default function LiveFeed() {
               {f}
             </button>
           ))}
-          {/* Component search. Substring match on component_id,
-              applied alongside severity filter. */}
+          {}
           <div className="ml-auto flex items-center gap-2 rounded-sm border border-border-subtle bg-bg-input px-2 py-0.5 focus-within:border-border-focus">
             <IconSearch size={12} className="text-text-tertiary" aria-hidden />
             <input
@@ -274,7 +240,7 @@ export default function LiveFeed() {
           </div>
         </div>
 
-        {/* §7.1 section header w/ lime underline. */}
+        {}
         <div className="flex items-center justify-between pt-2">
           <h2 className="relative font-sans text-section font-semibold text-text-primary">
             Active Incidents
@@ -295,10 +261,7 @@ export default function LiveFeed() {
           </span>
         </div>
 
-        {/* "Why isn't my item showing?" hint — appears when the
-            current filter combination hides items. Without this,
-            the user can stare at an empty-looking list while 40
-            incidents sit just beyond the filter. */}
+        {}
         {filtered.length !== items.length && (
           <div className="flex flex-wrap items-center gap-2 rounded-sm border border-sev-p1-border bg-sev-p1-bg/40 px-3 py-2 font-mono text-meta text-sev-p1">
             <span>
@@ -340,9 +303,9 @@ export default function LiveFeed() {
           </div>
         )}
 
-        {/* Incident table. */}
+        {}
         <div className="overflow-hidden rounded-md border border-border-subtle bg-bg-surface">
-          {/* Header row (matches the IncidentRow grid). */}
+          {}
           <div className="grid h-7 grid-cols-[12px_1fr_56px_140px_120px_100px_90px_20px] items-center gap-3 border-b border-border-subtle bg-bg-elevated px-4 font-sans text-label uppercase tracking-[0.05em] text-text-tertiary">
             <span aria-hidden />
             <span>Component</span>
@@ -367,19 +330,14 @@ export default function LiveFeed() {
               to create one.
             </div>
           ) : (
-            // AnimatePresence + IncidentRow's framer-motion wrapper
-            // makes new incidents fade+slide-down (§5.2) and ordering
-            // changes (e.g. a P0 climbing the table) animate smoothly.
+
             <AnimatePresence initial={false}>
               {filtered.map((wi) => <IncidentRow key={wi.id} wi={wi} />)}
             </AnimatePresence>
           )}
         </div>
 
-        {/* Bottom metrics-log strip — terminal frame to match the
-            landing's LogTape. Mac-style chrome, status chip on the
-            right, color-keyed values that mirror the backend's 5s
-            ticker output. */}
+        {}
         <MetricsTerminal
           currentRate={currentRate}
           activeCount={items.length}
@@ -390,11 +348,6 @@ export default function LiveFeed() {
   );
 }
 
-// ---- Inline components ----
-
-// StateCountsStrip — commander-mode prominence: tallies for OPEN /
-// INVESTIGATING / RESOLVED / CLOSED. Each tile pulses if non-zero
-// at OPEN (the room-coordination signal).
 function StateCountsStrip({
   counts,
 }: {
@@ -429,11 +382,6 @@ function StateCountsStrip({
   );
 }
 
-// MetricsTerminal wraps the bottom metrics strip in a mini-terminal
-// frame styled to match LogTape on the landing page: hairline border,
-// mac-style traffic dots, path label, LIVE chip, and color-keyed
-// values for rate / queue / active / p0 so the operator can scan it
-// at a glance.
 function MetricsTerminal({
   currentRate,
   activeCount,
@@ -445,7 +393,7 @@ function MetricsTerminal({
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-border-subtle bg-bg-surface">
-      {/* Chrome bar: traffic dots + path + live status. */}
+      {}
       <div className="flex h-7 items-center gap-2 border-b border-border-subtle bg-bg-elevated px-3">
         <span className="flex gap-1.5" aria-hidden>
           <span className="h-2 w-2 rounded-full bg-[#3F3F46]" />
@@ -453,14 +401,14 @@ function MetricsTerminal({
           <span className="h-2 w-2 rounded-full bg-[#3F3F46]" />
         </span>
         <span className="font-mono text-meta text-text-tertiary">
-          /var/log/ims/metrics.log
+          /var/log/vellum/metrics.log
         </span>
         <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-meta uppercase tracking-[0.05em] text-accent">
           <span className="h-1 w-1 animate-pulse-live rounded-full bg-accent" aria-hidden />
           LIVE · 2s
         </span>
       </div>
-      {/* Metric line — color-keyed values. */}
+      {}
       <div className="px-3 py-2 font-mono text-meta text-text-tertiary">
         <span className="text-text-tertiary">[metrics]</span>{" "}
         accepted=<span className="text-accent tabular-nums">{Math.round(currentRate).toLocaleString()}/s</span>{" "}
@@ -471,8 +419,6 @@ function MetricsTerminal({
     </div>
   );
 }
-
-// ---- Helpers ----
 
 function shiftPush(arr: number[], n: number): number[] {
   const next = arr.slice(1);

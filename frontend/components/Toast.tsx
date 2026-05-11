@@ -1,11 +1,3 @@
-// Tactile feedback for write actions. Theme-compliant: dark surface,
-// hairline border, mono meta text, color-keyed to severity-of-event
-// (success=emerald, error=red, info=lime). No shadow — border + bg.
-//
-// Pattern: a `<ToastViewport>` lives in the page near the root; pages
-// push toasts via a `useToast()` hook that's local to this module.
-// No global state library — Phase 5 v1 ships one provider per page.
-
 "use client";
 
 import { IconCheck, IconExclamationCircle, IconInfoCircle, IconX } from "@tabler/icons-react";
@@ -26,7 +18,6 @@ interface ToastCtx {
 
 const Ctx = createContext<ToastCtx>({ push: () => {} });
 
-// useToast: page components call `const toast = useToast(); toast.push("success", "→ RESOLVED")`.
 export function useToast(): ToastCtx {
   return useContext(Ctx);
 }
@@ -38,15 +29,14 @@ const ICONS: Record<Tone, React.ReactNode> = {
 };
 
 const TONE_CLASSES: Record<Tone, string> = {
-  // emerald for success — matches the RESOLVED state color
+
   success: "border-emerald-900 bg-emerald-950/40 text-emerald-300",
-  // red for error
+
   error: "border-sev-p0-border bg-sev-p0-bg/60 text-red-300",
-  // lime for info — matches brand accent
+
   info: "border-accent-border bg-accent-bg text-accent",
 };
 
-/** Wrap a subtree in ToastProvider to give it a `useToast()` hook. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -62,7 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ push }}>
       {children}
-      {/* Fixed viewport, bottom-right, max 3 stacked. */}
+      {}
       <div
         className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col-reverse gap-2"
         aria-live="polite"
@@ -78,8 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
-  // Auto-dismiss after 3 seconds. Errors stick around longer (5s)
-  // because the user might actually need to read them.
+
   useEffect(() => {
     const t = setTimeout(onDismiss, toast.tone === "error" ? 5000 : 3000);
     return () => clearTimeout(t);

@@ -11,14 +11,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/kubeboiii/ims/internal/model"
-	"github.com/kubeboiii/ims/internal/workflow"
+	"github.com/kubeboiii/vellum/internal/model"
+	"github.com/kubeboiii/vellum/internal/workflow"
 )
 
-// makeOpenWorkItem inserts a fresh OPEN-state work_item into the DB
-// and returns its ID. The seeded signal's timestamp is backdated by
-// one hour so MTTR has a measurable value when we close the incident
-// at "now" — a real-world incident isn't sub-second.
 func makeOpenWorkItem(t *testing.T, repo *WorkItemRepository) uuid.UUID {
 	t.Helper()
 	wi := model.NewWorkItem(uuid.New(), model.Signal{
@@ -34,9 +30,6 @@ func makeOpenWorkItem(t *testing.T, repo *WorkItemRepository) uuid.UUID {
 	return wi.ID
 }
 
-// TestEngine_HappyPath: OPEN → INVESTIGATING → RESOLVED → CLOSED with
-// a valid RCA. After CLOSED, MTTR is populated, the rca row exists,
-// and three state_transition audit rows are recorded.
 func TestEngine_HappyPath(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)
@@ -45,17 +38,16 @@ func TestEngine_HappyPath(t *testing.T) {
 
 	id := makeOpenWorkItem(t, repo)
 
-	// OPEN -> INVESTIGATING
 	if _, err := engine.Transition(ctx, id, workflow.InvestigatingState{},
 		workflow.TransitionContext{Actor: "sre@example.com"}); err != nil {
 		t.Fatalf("OPEN->INVESTIGATING: %v", err)
 	}
-	// INVESTIGATING -> RESOLVED
+
 	if _, err := engine.Transition(ctx, id, workflow.ResolvedState{},
 		workflow.TransitionContext{Actor: "sre@example.com"}); err != nil {
 		t.Fatalf("INVESTIGATING->RESOLVED: %v", err)
 	}
-	// RESOLVED -> CLOSED with a complete RCA
+
 	rca := &model.RCA{
 		RootCauseCategory: model.CategoryInfrastructure,
 		FixApplied:        strings.Repeat("a", 30),
@@ -76,7 +68,6 @@ func TestEngine_HappyPath(t *testing.T) {
 		t.Error("RCA.ID should be set")
 	}
 
-	// Verify state_transitions has 3 rows.
 	var transCount int
 	if err := pool.QueryRow(ctx,
 		`SELECT count(*) FROM state_transitions WHERE work_item_id = $1`, id,
@@ -88,8 +79,6 @@ func TestEngine_HappyPath(t *testing.T) {
 	}
 }
 
-// TestEngine_RejectsBackward: trying RESOLVED → OPEN returns
-// ErrInvalidTransition and the row stays at RESOLVED.
 func TestEngine_RejectsBackward(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)
@@ -104,7 +93,7 @@ func TestEngine_RejectsBackward(t *testing.T) {
 	if !errors.Is(err, workflow.ErrInvalidTransition) {
 		t.Fatalf("want ErrInvalidTransition, got %v", err)
 	}
-	// Verify the row is still RESOLVED.
+
 	wi, err := repo.GetByID(ctx, id)
 	if err != nil {
 		t.Fatalf("readback: %v", err)
@@ -114,8 +103,6 @@ func TestEngine_RejectsBackward(t *testing.T) {
 	}
 }
 
-// TestEngine_RejectsCloseWithoutRCA: OPEN→INVESTIGATING→RESOLVED→CLOSE
-// without an RCA returns ErrMissingRCA. The DB row stays RESOLVED.
 func TestEngine_RejectsCloseWithoutRCA(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)
@@ -126,7 +113,6 @@ func TestEngine_RejectsCloseWithoutRCA(t *testing.T) {
 	_, _ = engine.Transition(ctx, id, workflow.InvestigatingState{}, workflow.TransitionContext{})
 	_, _ = engine.Transition(ctx, id, workflow.ResolvedState{}, workflow.TransitionContext{})
 
-	// Plain Transition into CLOSED with no RCA in the ctx.
 	_, err := engine.Transition(ctx, id, workflow.ClosedState{}, workflow.TransitionContext{})
 	if !errors.Is(err, workflow.ErrMissingRCA) {
 		t.Fatalf("want ErrMissingRCA, got %v", err)
@@ -137,8 +123,6 @@ func TestEngine_RejectsCloseWithoutRCA(t *testing.T) {
 	}
 }
 
-// TestEngine_RejectsCloseWithIncompleteRCA: a present but invalid RCA
-// returns ErrIncompleteRCA and exposes the field errors.
 func TestEngine_RejectsCloseWithIncompleteRCA(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)
@@ -165,13 +149,6 @@ func TestEngine_RejectsCloseWithIncompleteRCA(t *testing.T) {
 	}
 }
 
-// TestEngine_ConcurrentClose_ExactlyOneWins: R2 in 00-master-prd —
-// "concurrency bugs hide in tests" — the canonical concurrency test
-// for this project. Two goroutines try to close the same WI with the
-// same valid RCA. Exactly one must succeed; the other gets either
-// ErrInvalidTransition (because the loser sees status=CLOSED) or a
-// DB-level unique-constraint failure (the rca row already exists).
-// Either is correct behaviour.
 func TestEngine_ConcurrentClose_ExactlyOneWins(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)
@@ -213,8 +190,6 @@ func TestEngine_ConcurrentClose_ExactlyOneWins(t *testing.T) {
 		t.Errorf("want exactly 1 success, got %d (failures=%d)", successes.Load(), failures.Load())
 	}
 
-	// Verify final state: WI is CLOSED, exactly one rca row, exactly
-	// one extra state_transition (RESOLVED→CLOSED).
 	wi, _ := repo.GetByID(ctx, id)
 	if wi.Status != model.StatusClosed {
 		t.Errorf("final status: want CLOSED, got %s", wi.Status)
@@ -226,8 +201,6 @@ func TestEngine_ConcurrentClose_ExactlyOneWins(t *testing.T) {
 	}
 }
 
-// TestEngine_NotFound: transitioning a non-existent WI ID returns
-// ErrNotFound (mapped to 404 by the API handler).
 func TestEngine_NotFound(t *testing.T) {
 	pool := startPostgres(t)
 	repo := NewWorkItemRepository(pool)

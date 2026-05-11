@@ -54,7 +54,6 @@ func TestValidate_PreventionTooShort(t *testing.T) {
 	}
 }
 
-// TestValidate_ReversedTimes: incident_end < incident_start → error.
 func TestValidate_ReversedTimes(t *testing.T) {
 	rca := validRCA()
 	rca.IncidentStart, rca.IncidentEnd = rca.IncidentEnd, rca.IncidentStart
@@ -64,8 +63,6 @@ func TestValidate_ReversedTimes(t *testing.T) {
 	}
 }
 
-// TestValidate_MultipleErrors: surface them all at once so the user can
-// fix them in one round-trip.
 func TestValidate_MultipleErrors(t *testing.T) {
 	rca := validRCA()
 	rca.RootCauseCategory = "BAD"
@@ -77,11 +74,9 @@ func TestValidate_MultipleErrors(t *testing.T) {
 	}
 }
 
-// TestValidate_WhitespaceOnlyFields: TrimSpace should treat
-// whitespace-only fix_applied and prevention_steps as empty.
 func TestValidate_WhitespaceOnlyFields(t *testing.T) {
 	rca := validRCA()
-	rca.FixApplied = "                                           " // 43 spaces
+	rca.FixApplied = "                                           "
 	errs := rca.Validate()
 	found := false
 	for _, e := range errs {
@@ -135,12 +130,11 @@ func TestRCAApplyDefaults_PreservesGiven(t *testing.T) {
 }
 
 func TestMTTRSeconds(t *testing.T) {
-	rca := validRCA() // 30 minutes apart
+	rca := validRCA()
 	if got := rca.MTTRSeconds(); got != 1800 {
 		t.Errorf("want 1800s (30min), got %d", got)
 	}
 
-	// Zero values → 0, not negative.
 	empty := RCA{}
 	if got := empty.MTTRSeconds(); got != 0 {
 		t.Errorf("empty MTTR want 0, got %d", got)

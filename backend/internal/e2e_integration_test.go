@@ -1,30 +1,3 @@
-// Phase 6 — end-to-end integration test.
-//
-// This test exercises the full signal-to-RCA lifecycle against a
-// LIVE backend (the HTTP API on :8080 plus the four DBs behind it).
-// It is guarded by the `integration` build tag so it doesn't run
-// in the default `go test ./...` sweep — unit tests must stay fast.
-//
-// Run:
-//   go test -tags=integration ./backend/internal/...
-//
-// Prerequisites:
-//   - docker compose -f docker/compose.yaml up -d  (DBs up)
-//   - go run ./backend/cmd/ims                     (backend on :8080)
-//
-// The test is deterministic: every run uses a fresh component_id
-// keyed by Unix nanoseconds, so concurrent runs don't collide and
-// re-running on the same DB is safe.
-//
-// What this test proves end-to-end:
-//   1. POST signal returns 202
-//   2. work_item appears in Postgres (visible via GET /v1/incidents/:id)
-//   3. raw signal appears in Mongo (visible via GET /signals)
-//   4. state transitions follow the FSM (OPEN -> INVESTIGATING -> RESOLVED)
-//   5. RCA gate is hard: RESOLVED -> CLOSED returns 422 without an RCA
-//   6. RCA submission closes the incident AND computes MTTR
-//   7. state_transitions audit log records every move
-
 //go:build integration
 
 package internal
@@ -48,19 +21,16 @@ const (
 )
 
 func baseURL() string {
-	if v := os.Getenv("IMS_BASE_URL"); v != "" {
+	if v := os.Getenv("VELLUM_BASE_URL"); v != "" {
 		return v
 	}
 	return defaultBaseURL
 }
 
-// TestE2E_FullLifecycle is the headline assertion of Phase 6: every
-// architectural rule survives a full lap. Runs in under 10 seconds.
 func TestE2E_FullLifecycle(t *testing.T) {
 	componentID := fmt.Sprintf("E2E_%d", time.Now().UnixNano())
 	t.Logf("component_id: %s", componentID)
 
-	// ─── 1. POST signals -------------------------------------------------
 	const signalCount = 3
 	for i := 0; i < signalCount; i++ {
 		body := map[string]any{
@@ -73,30 +43,25 @@ func TestE2E_FullLifecycle(t *testing.T) {
 		mustPOST(t, "/v1/signals", body, http.StatusAccepted)
 	}
 
-	// ─── 2. Find the work_item ------------------------------------------
 	wiID := waitForIncident(t, componentID)
 
-	// ─── 3. Verify the work_item shape -----------------------------------
 	wi := mustGetIncident(t, wiID)
 	if wi.Status != "OPEN" {
 		t.Fatalf("new work_item should be OPEN, got %s", wi.Status)
 	}
 	if wi.SignalCount != signalCount {
-		// Debounce should attach all 3 to the same work_item.
+
 		t.Fatalf("expected signal_count=%d, got %d", signalCount, wi.SignalCount)
 	}
 
-	// ─── 4. Verify raw signals in Mongo ----------------------------------
 	signals := mustGetSignals(t, wiID)
 	if signals.Total != signalCount {
 		t.Fatalf("expected %d raw signals in Mongo, got %d", signalCount, signals.Total)
 	}
 
-	// ─── 5. State machine: OPEN -> INVESTIGATING -> RESOLVED ------------
 	mustPatchState(t, wiID, "INVESTIGATING", http.StatusOK)
 	mustPatchState(t, wiID, "RESOLVED", http.StatusOK)
 
-	// ─── 6. RCA GATE: RESOLVED -> CLOSED without an RCA = 422 ----------
 	resp, body := patchState(t, wiID, "CLOSED")
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("RCA gate should reject CLOSED without RCA with 422; got %d (body=%s)",
@@ -106,7 +71,6 @@ func TestE2E_FullLifecycle(t *testing.T) {
 		t.Fatalf("422 body should mention rca; got %s", body)
 	}
 
-	// ─── 7. POST a complete RCA → must close + compute MTTR ------------
 	rca := map[string]any{
 		"root_cause_category": "CODE_DEFECT",
 		"fix_applied":         "reverted bad deploy; added boundary-case regression test",
@@ -115,7 +79,6 @@ func TestE2E_FullLifecycle(t *testing.T) {
 	}
 	mustPOST(t, fmt.Sprintf("/v1/incidents/%s/rca", wiID), rca, http.StatusCreated)
 
-	// ─── 8. Final state check --------------------------------------------
 	final := mustGetIncident(t, wiID)
 	if final.Status != "CLOSED" {
 		t.Fatalf("after RCA, work_item should be CLOSED; got %s", final.Status)
@@ -127,12 +90,11 @@ func TestE2E_FullLifecycle(t *testing.T) {
 		t.Fatalf("closed_at should be set; got %+v", final.ClosedAt)
 	}
 
-	// ─── 9. Transitions audit log ----------------------------------------
 	trs := mustGetTransitions(t, wiID)
 	if trs.Count < 3 {
 		t.Fatalf("expected at least 3 transitions in audit; got %d", trs.Count)
 	}
-	// The first three transitions, in order, must match the FSM.
+
 	want := []struct{ from, to string }{
 		{"OPEN", "INVESTIGATING"},
 		{"INVESTIGATING", "RESOLVED"},
@@ -146,8 +108,6 @@ func TestE2E_FullLifecycle(t *testing.T) {
 		}
 	}
 }
-
-// ─── helpers ───────────────────────────────────────────────────────────
 
 type workItem struct {
 	ID          string  `json:"id"`
@@ -197,8 +157,6 @@ func mustPOST(t *testing.T, path string, body any, wantStatus int) {
 	}
 }
 
-// patchState returns the response + body without asserting status —
-// used by the RCA-gate case where 422 is expected.
 func patchState(t *testing.T, id string, to string) (*http.Response, string) {
 	t.Helper()
 	b, _ := json.Marshal(map[string]any{
@@ -281,10 +239,6 @@ func mustGetTransitions(t *testing.T, id string) transitionsResp {
 	return out
 }
 
-// waitForIncident polls /v1/incidents until the new component
-// appears (the debouncer + processor takes a moment to land the
-// row). Returns the work_item_id once found. Times out after
-// pollTimeout.
 func waitForIncident(t *testing.T, componentID string) string {
 	t.Helper()
 	deadline := time.Now().Add(pollTimeout)

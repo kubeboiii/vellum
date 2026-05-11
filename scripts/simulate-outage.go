@@ -1,26 +1,3 @@
-// Phase 6 — headless failure simulator.
-//
-// Fires three pre-canned outage scenarios at the IMS backend's
-// /v1/signals endpoint and prints a one-page summary showing the
-// debounce compression ratio per scenario.
-//
-// Usage:
-//
-//	go run ./scripts/simulate-outage.go                       # all scenarios
-//	go run ./scripts/simulate-outage.go --scenario rdbms      # just one
-//	go run ./scripts/simulate-outage.go --target http://...   # different backend
-//
-// Scenarios:
-//   - rdbms : 50 P0 to RDBMS_PRIMARY_01, then 100 P1 to API_CHECKOUT
-//   - cache : 200 P2 to CACHE_CLUSTER_A
-//   - mcp   : 30 P0 to MCP_HOST_INDEXER + 80 P1 fanned over 4 APIs
-//   - all   : runs all three sequentially (default)
-//
-// The script tolerates 503 (backpressure) and 5xx (other) — these
-// are counted and reported, not fatal. Successful runs print a
-// debounce ratio per scenario so PRD G2 (≥60×) is verifiable
-// from a clean checkout.
-
 package main
 
 import (
@@ -36,8 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-// ─── scenario model ──────────────────────────────────────────────────
 
 type step struct {
 	count         int
@@ -84,13 +59,11 @@ func scenarios() []scenario {
 	}
 }
 
-// ─── per-scenario counters ───────────────────────────────────────────
-
 type counters struct {
 	sent     atomic.Int64
 	accepted atomic.Int64
-	rejected atomic.Int64 // 503 specifically
-	failed   atomic.Int64 // anything else non-2xx
+	rejected atomic.Int64
+	failed   atomic.Int64
 }
 
 type runResult struct {
@@ -98,10 +71,8 @@ type runResult struct {
 	counters   *counters
 	duration   time.Duration
 	workItems  int
-	components map[string]int // component_id -> work_item count
+	components map[string]int
 }
-
-// ─── main ────────────────────────────────────────────────────────────
 
 func main() {
 	target := flag.String("target", "http://localhost:8080", "IMS backend base URL")
@@ -125,7 +96,6 @@ func main() {
 		}
 	}
 
-	// Sanity: backend reachable?
 	if !ping(*target) {
 		fmt.Fprintf(os.Stderr, "❌ %s/health is unreachable. Is the backend running?\n", *target)
 		os.Exit(1)
@@ -146,14 +116,10 @@ func main() {
 	}
 }
 
-// ─── scenario execution ──────────────────────────────────────────────
-
 func runScenario(target string, sc scenario) runResult {
 	c := &counters{}
 	start := time.Now()
 
-	// Snapshot the existing work_items for the components we're
-	// about to touch, so we can compute the delta accurately.
 	preExisting := countWorkItemsForComponents(target, componentSet(sc))
 
 	var wg sync.WaitGroup
@@ -166,9 +132,6 @@ func runScenario(target string, sc scenario) runResult {
 	}
 	wg.Wait()
 
-	// Give the workers a beat to flush. The pipeline is async; if
-	// we GET /v1/incidents immediately, the last few signals may
-	// not yet have their work_items materialised in Postgres.
 	time.Sleep(500 * time.Millisecond)
 
 	after := countWorkItemsForComponents(target, componentSet(sc))
@@ -242,12 +205,10 @@ func postOne(target string, st step, i int, c *counters) {
 	}
 }
 
-// ─── reporting ───────────────────────────────────────────────────────
-
 func printScenarioReport(r runResult) {
 	sc := r.scenario
 	c := r.counters
-	expected := expectedWorkItems(sc) // ceil(Σcount per component / 100)
+	expected := expectedWorkItems(sc)
 	accepted := c.accepted.Load()
 	ratio := "—"
 	if r.workItems > 0 {
@@ -303,8 +264,6 @@ func printAggregateReport(results []runResult) {
 	}
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────
-
 func ping(target string) bool {
 	resp, err := http.Get(target + "/health")
 	if err != nil {
@@ -322,10 +281,6 @@ type workItemList struct {
 	Items []workItemListItem `json:"items"`
 }
 
-// countWorkItemsForComponents returns a map component_id -> count
-// of work_items currently in the active list for the components we
-// care about. Used to compute deltas before/after a scenario so
-// rerunning on the same DB still shows accurate "new" counts.
 func countWorkItemsForComponents(target string, ids map[string]bool) map[string]int {
 	out := map[string]int{}
 	resp, err := http.Get(target + "/v1/incidents?limit=500")
@@ -353,9 +308,6 @@ func componentSet(sc scenario) map[string]bool {
 	return out
 }
 
-// expectedWorkItems applies FR-3.1: each component_id's window
-// holds at most 100 signals. So expected = sum_per_component(
-// ceil(total_count_for_that_component / 100) ).
 func expectedWorkItems(sc scenario) int {
 	totals := map[string]int{}
 	for _, st := range sc.steps {
@@ -363,7 +315,7 @@ func expectedWorkItems(sc scenario) int {
 	}
 	total := 0
 	for _, n := range totals {
-		total += (n + 99) / 100 // integer ceil
+		total += (n + 99) / 100
 	}
 	return total
 }

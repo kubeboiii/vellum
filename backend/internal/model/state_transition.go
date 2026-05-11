@@ -6,9 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// StateTransition is one row in the `state_transitions` audit table
-// (migration 002). The workflow engine writes one per successful
-// transition, atomically with the work_items UPDATE (FR-4.4).
 type StateTransition struct {
 	ID         uuid.UUID `json:"id"`
 	WorkItemID uuid.UUID `json:"work_item_id"`

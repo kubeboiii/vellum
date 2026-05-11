@@ -12,8 +12,6 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
-// startRedis boots an ephemeral Redis container, loads our debounce
-// script, and returns a ready-to-use Debouncer.
 func startRedis(t *testing.T) *Debouncer {
 	t.Helper()
 	if testing.Short() {
@@ -90,8 +88,6 @@ func TestProcess_SecondSignalJoinsSameWindow(t *testing.T) {
 	}
 }
 
-// TestProcess_CapTriggersNewWindow: with MaxSignals=5 in the fixture,
-// the 6th signal should kick off a new Work Item.
 func TestProcess_CapTriggersNewWindow(t *testing.T) {
 	d := startRedis(t)
 	ctx := context.Background()
@@ -108,7 +104,7 @@ func TestProcess_CapTriggersNewWindow(t *testing.T) {
 			t.Errorf("signal %d: expected to join %v, got %v", i, firstID, r.WorkItemID)
 		}
 	}
-	// 6th signal: count would be 6 > 5, so script opens a new window.
+
 	r, err := d.Process(ctx, "CACHE_01")
 	if err != nil {
 		t.Fatalf("6th: %v", err)
@@ -121,8 +117,6 @@ func TestProcess_CapTriggersNewWindow(t *testing.T) {
 	}
 }
 
-// TestProcess_DifferentComponents_AreIndependent: a signal on CACHE_01
-// must not affect debounce state for RDBMS_01.
 func TestProcess_DifferentComponents_AreIndependent(t *testing.T) {
 	d := startRedis(t)
 	ctx := context.Background()
@@ -138,17 +132,12 @@ func TestProcess_DifferentComponents_AreIndependent(t *testing.T) {
 	}
 }
 
-// TestProcess_ConcurrentSameComponent: the heart of why we use Lua.
-// 50 goroutines fire signals at the same component_id; exactly ONE
-// should win the CREATE, the other 49 should JOIN. Atomicity at work.
 func TestProcess_ConcurrentSameComponent(t *testing.T) {
 	d := startRedis(t)
 	ctx := context.Background()
 
 	const N = 50
-	// Use a window big enough that all 50 fit before the cap (which is
-	// 5 in this fixture). Bump MaxSignals via a fresh debouncer for
-	// this test only.
+
 	d.cfg.MaxSignals = N + 1
 
 	results := make([]Result, N)
@@ -183,15 +172,12 @@ func TestProcess_ConcurrentSameComponent(t *testing.T) {
 	}
 }
 
-// TestProcess_RedisDown_FallsBackToCreated: when EvalSha errors, we
-// MUST return a CREATED result with Degraded=true (FR-3.6 graceful
-// degradation).
 func TestProcess_RedisDown_FallsBackToCreated(t *testing.T) {
-	// Use a Redis client pointed at a dead address so EvalSha fails.
+
 	client := redis.NewClient(&redis.Options{
-		Addr:        "127.0.0.1:1", // nothing listening
+		Addr:        "127.0.0.1:1",
 		DialTimeout: 100 * time.Millisecond,
-		MaxRetries:  -1, // don't retry; fail fast
+		MaxRetries:  -1,
 	})
 	t.Cleanup(func() { _ = client.Close() })
 

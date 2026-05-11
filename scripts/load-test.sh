@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 2 acceptance: 10K signals/sec for 60s, p99 < 50ms.
 #
-# Why this script bumps IMS_RATE_LIMIT_RPS: vegeta runs on one host so every
+# Why this script bumps VELLUM_RATE_LIMIT_RPS: vegeta runs on one host so every
 # request shares one source IP (127.0.0.1). The production default of 1000
 # req/sec per source is intentional (FR-1.6 — protects against a single
 # chatty agent), but for a single-host load test we need to lift it or
@@ -49,7 +49,7 @@ Content-Type: application/json
 EOF
 
 echo ">>> Vegeta attack: rate=${RATE}/s duration=${DURATION} target=${TARGET}"
-echo ">>> (Make sure backend is running with IMS_RATE_LIMIT_RPS >= ${RATE})"
+echo ">>> (Make sure backend is running with VELLUM_RATE_LIMIT_RPS >= ${RATE})"
 
 RESULTS="$REPORT_DIR/results.bin"
 vegeta attack \

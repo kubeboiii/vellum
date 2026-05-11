@@ -1,15 +1,11 @@
-// MTTRHistogram — bucketed distribution of mttr_seconds across the
-// closed-incident set. Fast read: are most incidents resolved in
-// minutes, or are we seeing long tails?
-
 "use client";
 
 import type { WorkItem } from "@/lib/types";
 
 interface Bucket {
   label: string;
-  min: number; // inclusive seconds
-  max: number; // exclusive seconds
+  min: number;
+  max: number;
 }
 
 const BUCKETS: Bucket[] = [
@@ -35,9 +31,6 @@ export function MTTRHistogram({ items }: Props) {
   );
   const max = Math.max(1, ...counts);
 
-  // Median MTTR — the typical value. Drawn as a horizontal lime
-  // dashed line across the histogram so the user gets "here's the
-  // shape" AND "here's the middle" without doing the math.
   const median = computeMedian(closed.map((c) => c.mttr_seconds as number));
   const medianBucketIdx = median !== null ? bucketIndexOf(median) : -1;
 

@@ -1,10 +1,3 @@
-// /flow — animated end-to-end signal flow diagram. Reuses the
-// language of the landing's HowItWorks but tells one story across
-// four stages: ingest → debounce → persist (parallel) → alert.
-//
-// Auto-loops with a 4-second cycle; pause toggle is provided.
-// Reduced-motion: render final state, no animation.
-
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
@@ -39,7 +32,6 @@ export default function FlowPage() {
   const [stage, setStage] = useState<Stage>("ingest");
   const [paused, setPaused] = useState(reduced ?? false);
 
-  // Auto-advance every 4s when not paused.
   useEffect(() => {
     if (paused || reduced) return;
     const id = setInterval(() => {
@@ -67,7 +59,7 @@ export default function FlowPage() {
           </p>
         </header>
 
-        {/* Stage selector. */}
+        {}
         <nav
           className="flex flex-wrap items-center gap-2"
           aria-label="stage selector"
@@ -102,12 +94,12 @@ export default function FlowPage() {
           </button>
         </nav>
 
-        {/* Diagram surface. */}
+        {}
         <section className="relative overflow-hidden rounded-md border border-border-subtle bg-bg-surface p-8">
           <FlowDiagram stage={stage} reduced={!!reduced} />
         </section>
 
-        {/* Explanation strip — tied to active stage. */}
+        {}
         <section className="rounded-md border border-border-subtle bg-bg-surface p-4">
           <h2 className="flex items-center gap-2 font-mono text-label uppercase tracking-[0.05em] text-text-secondary">
             <span
@@ -125,9 +117,6 @@ export default function FlowPage() {
   );
 }
 
-// FlowDiagram — five nodes connected by arrows. Each node lights
-// up when its stage is active. The "current" arrow gets a moving
-// dot to suggest the signal's progress.
 function FlowDiagram({
   stage,
   reduced,
@@ -135,7 +124,7 @@ function FlowDiagram({
   stage: Stage;
   reduced: boolean;
 }) {
-  // Layout coordinates inside a 1000×220 viewBox.
+
   return (
     <div className="overflow-x-auto">
       <svg
@@ -144,8 +133,7 @@ function FlowDiagram({
         role="img"
         aria-label="signal flow diagram"
       >
-        {/* Background hairline grid (matches landing's GridTexture
-            idiom but static here). */}
+        {}
         <defs>
           <pattern id="flow-grid" width="32" height="32" patternUnits="userSpaceOnUse">
             <path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(255,255,255,0.025)" strokeWidth="1" />
@@ -153,17 +141,17 @@ function FlowDiagram({
         </defs>
         <rect x="0" y="0" width="1000" height="220" fill="url(#flow-grid)" />
 
-        {/* Nodes */}
+        {}
         <Node x={60} y={110} label="HTTP / gRPC" sub="POST /v1/signals" active={stage === "ingest"} />
         <Node x={260} y={110} label="Queue" sub="bounded channel" active={stage === "ingest"} />
         <Node x={460} y={110} label="Redis Lua" sub="atomic debounce" active={stage === "debounce"} />
-        {/* Three parallel persist sinks */}
+        {}
         <Node x={680} y={40} label="MongoDB" sub="raw audit" active={stage === "persist"} small />
         <Node x={680} y={110} label="Postgres" sub="work_items" active={stage === "persist"} small />
         <Node x={680} y={180} label="Timescale" sub="signal_metrics" active={stage === "persist"} small />
         <Node x={900} y={110} label="Alerter" sub="Strategy fanout" active={stage === "alert"} />
 
-        {/* Arrows */}
+        {}
         <Arrow x1={108} y1={110} x2={228} y2={110} active={stage === "ingest"} reduced={reduced} />
         <Arrow x1={308} y1={110} x2={428} y2={110} active={stage === "debounce" || stage === "ingest"} reduced={reduced} />
         <Arrow x1={508} y1={100} x2={648} y2={50} active={stage === "persist"} reduced={reduced} />
@@ -263,13 +251,13 @@ function Arrow({
         strokeWidth={active ? 1.5 : 1}
         strokeOpacity={active ? 0.9 : 0.5}
       />
-      {/* Arrowhead */}
+      {}
       <polygon
         points={`${x2},${y2} ${x2 - 6},${y2 - 3} ${x2 - 6},${y2 + 3}`}
         fill={stroke}
         opacity={active ? 0.9 : 0.5}
       />
-      {/* Traveling dot for the active arrow. */}
+      {}
       {active && !reduced && (
         <motion.circle
           r={3}
