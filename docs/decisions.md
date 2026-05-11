@@ -621,3 +621,28 @@ TEMPLATE for new entries — copy and fill in:
 **Decision:** scripts/simulate-outage.go provides the same three scenarios, runnable from a clean checkout with `go run`. Computes the debounce ratio per scenario and prints an aggregate. Tolerates 503s and 5xx — they're counted, not fatal.
 **Why:** Reviewers can demo the system without spinning up the frontend. The script also produces shareable terminal output for a recorded demo.
 **Impact:** Cache scenario hits 100× compression; aggregate 51× (RDBMS cascade and MCP fan-out drag the harmonic mean down, by design).
+
+## 2026-05-11 — Phase 7: Mermaid over PNG for architecture diagrams
+**Context:** The PRD §13 calls for an architecture diagram. The repo had ASCII diagrams in `docs/01-architecture.md` §2 and §3.
+**Decision:** Replaced the ASCII with Mermaid diagrams. GitHub renders Mermaid inline; the source is text so it diff-able in git; no image file to keep in sync. Two diagrams: system context (producers → IMS → consumers) and runtime topology (backend with all internal stages + the four data stores).
+**Why:** Diagrams that live in code never go stale alongside the code. PNG/SVG exports from design tools need re-rendering and someone usually forgets.
+**Alternatives considered:** Lucidchart export to PNG (better layout, harder to update); D2 (newer text-to-diagram syntax, less universally rendered).
+**Impact:** A copy of the high-level pipeline diagram sits at the top of the README so the elevator pitch is visual on first scroll.
+
+## 2026-05-11 — Phase 7: `prompts.md` as narrative, not transcript dump
+**Context:** PRD §13 asks for a `prompts.md`. The literal interpretation would be a dump of every prompt Claude was given — 50+ pages of mostly noise.
+**Decision:** Wrote a narrative — one section per phase — covering goal, approach, what worked, what got pushed back on, what I'd do differently. Plus a meta section on how I worked with Claude across the seven phases.
+**Why:** A reviewer reads `prompts.md` to understand *process*, not to audit every keystroke. The narrative form proves understanding; the transcript dump proves only that the prompts existed.
+**Impact:** ~270 lines, readable in 5 minutes, covers all 7 phases.
+
+## 2026-05-11 — Phase 7: no recorded demo video
+**Context:** PRD §13 explicitly requests a demo video. I can't reliably record video from this environment.
+**Decision:** Replaced the video with a "How to demo" section in README.md showing the three commands that prove G1, G2, G3 plus a dashboard click-through guide. A reviewer can record their own video using these as the script.
+**Why:** Honest about the limitation; the README section is reproducible and version-controlled. A video would be a single point of staleness.
+**Impact:** Reviewer can follow the README to demonstrate all three PRD goals end-to-end in under 5 minutes.
+
+## 2026-05-11 — Phase 7: `.env.example` audited against `os.LookupEnv` calls
+**Context:** Pre-Phase-7 `.env.example` had 4 variables. The backend actually reads 18.
+**Decision:** Expanded `.env.example` to cover every `envOr` / `envInt` / `envFloat` / `envDur` call in `cmd/ims/main.go`, plus the `IMS_BASE_URL` consumed by the integration test. Grouped them by subsystem with FR references.
+**Why:** A reviewer who hits a config issue on day one should find the answer in `.env.example`, not by grepping the source.
+**Impact:** `.env.example` is now an exhaustive, documented reference; every variable has its default value shown.
